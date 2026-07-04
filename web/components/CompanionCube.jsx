@@ -6,121 +6,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 const DUST_DENSITY = 110;
 const VIGNETTE = 0.85;
 
-// ─── Mock API data (shapes match the real GET /api/beats + POST /api/query) ───
-const DATA = {
-  hollow_knight: {
-    abilities: [
-      { id: "mothwing_cloak", title: "Mothwing Cloak" }, { id: "mantis_claw", title: "Mantis Claw" },
-      { id: "crystal_heart", title: "Crystal Heart" }, { id: "desolate_dive", title: "Desolate Dive" },
-      { id: "dream_nail", title: "Dream Nail" }, { id: "ismas_tear", title: "Isma's Tear" },
-      { id: "monarch_wings", title: "Monarch Wings" }, { id: "shade_cloak", title: "Shade Cloak" },
-      { id: "kings_brand", title: "King's Brand" },
-    ],
-    areas: [
-      { id: "crossroads", title: "Forgotten Crossroads" }, { id: "greenpath", title: "Greenpath" },
-      { id: "fungal", title: "Fungal Wastes" }, { id: "fog_canyon", title: "Fog Canyon" },
-      { id: "city", title: "City of Tears" }, { id: "crystal_peak", title: "Crystal Peak" },
-      { id: "waterways", title: "Royal Waterways" }, { id: "deepnest", title: "Deepnest" },
-      { id: "basin", title: "Ancient Basin" }, { id: "kingdoms_edge", title: "Kingdom's Edge" },
-      { id: "queens_gardens", title: "Queen's Gardens" }, { id: "white_palace", title: "White Palace" },
-    ],
-    bosses: [
-      { id: "false_knight", title: "False Knight" }, { id: "hornet_1", title: "Hornet (Greenpath)" },
-      { id: "mantis_lords", title: "Mantis Lords" }, { id: "soul_master", title: "Soul Master" },
-      { id: "dung_defender", title: "Dung Defender" }, { id: "broken_vessel", title: "Broken Vessel" },
-      { id: "watcher_knights", title: "Watcher Knights" }, { id: "uumuu", title: "Uumuu" },
-      { id: "traitor_lord", title: "Traitor Lord" }, { id: "hornet_2", title: "Hornet (Kingdom's Edge)" },
-      { id: "hollow_knight", title: "The Hollow Knight" }, { id: "radiance", title: "The Radiance" },
-    ],
-  },
-  silksong: {
-    abilities: [
-      { id: "swift_step", title: "Swift Step" }, { id: "drifters_cloak", title: "Drifter's Cloak" },
-      { id: "cling_grip", title: "Cling Grip" }, { id: "needolin", title: "Needolin" },
-      { id: "clawline", title: "Clawline" }, { id: "silk_soar", title: "Silk Soar" },
-    ],
-    areas: [
-      { id: "moss_grotto", title: "Moss Grotto" }, { id: "bone_bottom", title: "Bone Bottom" },
-      { id: "the_marrow", title: "The Marrow" }, { id: "deep_docks", title: "Deep Docks" },
-      { id: "far_fields", title: "Far Fields" }, { id: "greymoor", title: "Greymoor" },
-      { id: "shellwood", title: "Shellwood" }, { id: "bellhart", title: "Bellhart" },
-      { id: "blasted_steps", title: "Blasted Steps" }, { id: "citadel", title: "The Citadel" },
-    ],
-    bosses: [
-      { id: "moss_mother", title: "Moss Mother" }, { id: "bell_beast", title: "Bell Beast" },
-      { id: "lace_1", title: "Lace (Deep Docks)" }, { id: "fourth_chorus", title: "Fourth Chorus" },
-      { id: "widow", title: "Widow" }, { id: "last_judge", title: "Last Judge" },
-      { id: "cogwork_dancers", title: "Cogwork Dancers" }, { id: "trobbio", title: "Trobbio" },
-      { id: "lace_2", title: "Lace (The Cradle)" }, { id: "grand_mother_silk", title: "Grand Mother Silk" },
-    ],
-  },
-};
-
-const PRESETS = {
-  hk: {
-    just: ["crossroads", "false_knight"],
-    mid: ["crossroads", "false_knight", "greenpath", "hornet_1", "mothwing_cloak", "fungal", "mantis_lords", "mantis_claw", "city", "soul_master", "desolate_dive", "fog_canyon"],
-    end: ["crossroads", "false_knight", "greenpath", "hornet_1", "mothwing_cloak", "fungal", "mantis_lords", "mantis_claw", "city", "soul_master", "desolate_dive", "fog_canyon", "crystal_peak", "crystal_heart", "waterways", "dung_defender", "ismas_tear", "deepnest", "basin", "broken_vessel", "monarch_wings", "watcher_knights", "uumuu", "dream_nail", "kingdoms_edge", "hornet_2", "kings_brand", "shade_cloak", "queens_gardens", "traitor_lord"],
-  },
-  ss: {
-    just: ["moss_grotto", "moss_mother"],
-    mid: ["moss_grotto", "moss_mother", "bone_bottom", "the_marrow", "bell_beast", "deep_docks", "lace_1", "swift_step", "far_fields", "fourth_chorus", "greymoor", "drifters_cloak"],
-    end: ["moss_grotto", "moss_mother", "bone_bottom", "the_marrow", "bell_beast", "deep_docks", "lace_1", "swift_step", "far_fields", "fourth_chorus", "greymoor", "drifters_cloak", "shellwood", "cling_grip", "bellhart", "widow", "blasted_steps", "last_judge", "needolin", "citadel", "cogwork_dancers", "trobbio", "clawline"],
-  },
-};
-
-const WIKI = { hk: "https://hollowknight.wiki/w/", ss: "https://hollowknight.wiki/w/" };
-
-const ANSWERS = {
-  hk: [
-    { keys: /mantis/i, gate: "fungal", gateTitle: "Fungal Wastes",
-      full: "The **Mantis Lords** await at the base of the Mantis Village, in the southwest of the **Fungal Wastes**.\n\n### The duel\n- **Phase one** is a single Lord. Learn her three moves: a low dash (jump), a downward dive (step aside), and a wall-cling boomerang (stand in the gap).\n- **Phase two** brings the remaining two sisters at once — the same moves, interleaved. Stay near the centre and commit to short nail exchanges.\n- Every attack has a long, honest wind-up. This fight teaches patience; don't greed for extra hits.\n\nWin with honour and the village will *bow to you* — the Mantis tribe becomes docile.",
-      hint: "Their duel is a dance of three moves, each announced plainly before it lands. Watch one full round without swinging your nail — the answer is in the wind-ups. And remember: this tribe respects patience, in more ways than one.",
-      cites: [{ title: "Mantis Lords", section: "Behaviour and Tactics", slug: "Mantis_Lords" }, { title: "Mantis Village", section: "Overview", slug: "Mantis_Village" }] },
-    { keys: /dash|cloak|mothwing/i, gate: "greenpath", gateTitle: "Greenpath",
-      full: "The dash is granted by the **Mothwing Cloak**, found in **Greenpath** — the verdant region west of the Forgotten Crossroads.\n\n- Push west and down through Greenpath until a certain *needle-wielding stranger* bars your way.\n- Beyond that duel lies a broken vessel and, beside it, the cloak.\n- Once taken: dash with it to cross gaps and slip through closing traps.",
-      hint: "Follow the green. West of the Crossroads the air turns soft and mossy — keep descending, and the way will make itself known after a sharp encounter.",
-      cites: [{ title: "Mothwing Cloak", section: "Location", slug: "Mothwing_Cloak" }, { title: "Greenpath", section: "How to reach", slug: "Greenpath" }] },
-    { keys: /hornet/i, gate: "greenpath", gateTitle: "Greenpath",
-      full: "**Hornet** duels you deep in **Greenpath**.\n\n- She has three tells: a lunging needle throw (jump over the string), a leaping slash (dash beneath), and a spinning silk burst (keep your distance).\n- Between attacks she pauses to taunt — *that* is your window.\n- Two or three nail hits per opening, no more. Greed is what kills vessels here.",
-      hint: "She announces everything — listen for the cry before each lunge. Fight her like a conversation: speak only when she pauses.",
-      cites: [{ title: "Hornet", section: "Boss Fight (Greenpath)", slug: "Hornet" }] },
-    { keys: /radiance|true ending|dream/i, gate: "dream_nail", gateTitle: "the Dream Nail",
-      full: "You seek the light behind it all. With the **Dream Nail** in hand:\n\n- Gather **Essence** from Whispering Roots and Warrior Dreams — you'll want 1,800 for the Awoken Dream Nail.\n- Seek the **Birthplace** in the Abyss to unite the fractured halves of a certain charm.\n- Then, at the final battle, strike the fallen vessel with the Dream Nail when the chance appears… and face **The Radiance** herself.",
-      hint: "Some dreams are doors. The old nail you were given can open more than memories — strengthen it, look to where vessels are born, and the true ending will show its seam.",
-      cites: [{ title: "The Radiance", section: "How to unlock", slug: "The_Radiance" }, { title: "Godmaster", section: "Endings", slug: "Endings" }] },
-  ],
-  ss: [
-    { keys: /lace/i, gate: "deep_docks", gateTitle: "Deep Docks",
-      full: "**Lace** crosses blades with you in the **Deep Docks**, amid the forge-light.\n\n- Her pin work is fast but rhythmic: parry-bait lunges, a rising flourish, and a mid-air pirouette strike.\n- Stay grounded; most of her strings whiff if you hold your ground and strike after her flourish.\n- Use **Swift Step** to slip behind her recovery — two needle hits, then reset.",
-      hint: "She fights like a duellist expecting applause. Let her finish each flourish — the bow at the end of it is where your needle belongs.",
-      cites: [{ title: "Lace", section: "Boss Fight (Deep Docks)", slug: "Lace" }] },
-    { keys: /bell ?beast|bell/i, gate: "bone_bottom", gateTitle: "Bone Bottom",
-      full: "The **Bell Beast** dwells past **Bone Bottom**, in the bell-way tunnels of the Marrow.\n\n- It charges wall to wall — cling and hop over each pass.\n- When it burrows, watch the dust; it erupts where the motes gather.\n- Spare your silk for healing between charge cycles.\n\nCalm it, and the old courier becomes your **fast travel** through Pharloom.",
-      hint: "What rings the bells of Pharloom is not an enemy, exactly. Follow the tolling east of Bone Bottom, and be ready to prove you're worth carrying.",
-      cites: [{ title: "Bell Beast", section: "Encounter", slug: "Bell_Beast" }, { title: "Bone Bottom", section: "Connections", slug: "Bone_Bottom" }] },
-    { keys: /grand mother|final|silk.*end|ending/i, gate: "citadel", gateTitle: "the Citadel",
-      full: "The thread of Pharloom winds upward to **Grand Mother Silk**.\n\n- Ascend the **Citadel** and settle its choir — the Cogwork Dancers and Trobbio bar the melodies you need.\n- Learn **Silk Soar** to reach the Cradle above.\n- There, an old duel is repaid in full before the Mother of it all unspools.",
-      hint: "Everything in Pharloom is stitched toward one high place. Keep climbing; when songs start answering your Needolin, you are close.",
-      cites: [{ title: "Grand Mother Silk", section: "How to reach", slug: "Grand_Mother_Silk" }] },
-  ],
-};
-
-const NEXT = {
-  hk: [
-    [0, "You stand at the beginning, little ghost. Descend the well into the **Forgotten Crossroads** — map its corners, find the bench, and seek the **False Knight** beneath the old arena. Cornifer's humming will lead you to a map."],
-    [5, "With the Crossroads behind you, the kingdom opens two ways: **Greenpath** to the west holds the gift of the dash, and the **Fungal Wastes** below test your claws. Greenpath first is the gentler thread."],
-    [12, "You've walked far. The **City of Tears** is the kingdom's heart — the **Soul Master** waits in its sanctum, and roads fan out to **Crystal Peak** and the **Royal Waterways** from there."],
-    [99, "Little remains unmapped. The **Ancient Basin** and what sleeps beneath it call to vessels who have come this far. You know, by now, what you approach."],
-  ],
-  ss: [
-    [0, "Your climb begins in the **Moss Grotto**. Find your needle, quiet the **Moss Mother**, and follow the pilgrims' path up to **Bone Bottom** — the town will give you your first tasks and your first tools."],
-    [4, "Pharloom widens. The **Deep Docks** burn to the east — a duellist in white waits there — while the **Far Fields** teach your needle new reach. Take the Bell Beast's roads between them."],
-    [9, "The **Citadel's** spires are no longer rumour. Push through **Bellhart** and the **Blasted Steps**; the songs of the upper kingdom are calling you to the climb."],
-    [99, "The last threads gather at the top of the world. The Cradle waits above the Citadel — finish what the pilgrimage started."],
-  ],
-};
-
 const THEMES = {
   hk: {
     text: "#e6eff8", textDim: "rgba(196,216,234,.55)", accent: "#d7ecff", glow: "#a8d8ff",
@@ -140,35 +25,26 @@ const THEMES = {
   },
 };
 
-// ─── Mock query (swap for `fetch('/api/query', …)` against the Python backend) ───
-function apiQuery(body) {
-  const g = body.game === "silksong" ? "ss" : "hk";
-  const done = body.completed_beats;
-  const nudge = body.mode === "gently_nudge";
-  const hit = ANSWERS[g].find((a) => a.keys.test(body.question));
-  const mk = (c) => ({ id: c.slug, title: c.title, section: c.section, url: WIKI[g] + c.slug });
-  if (hit) {
-    const gated = hit.gate && !done.includes(hit.gate);
-    if (gated && body.tolerance === "none") {
-      const md = g === "hk"
-        ? "*The seals upon this knowledge hold fast, little ghost.*\n\nYou ask of things beyond where your map is marked, and your ward forbids me to speak of them plainly. Some truths are sweeter found than told.\n\n- Mark more of your journey in **Where are you?** — perhaps you've been further than you've said\n- Or loosen your spoiler ward to **Adventurous**, and I shall answer in careful riddles"
-        : "*That thread is not yet yours to pull, weaver.*\n\nThe answer lies past where your climb is marked, and your ward binds my needle. I will not unravel what Pharloom means you to discover.\n\n- Mark more of your ascent in **Where are you?**\n- Or loosen your spoiler ward to **Adventurous**, and I'll hum the shape of it";
-      return Promise.resolve({ answer: md, citations: [], gated: true });
-    }
-    let md = nudge ? hit.hint : hit.full;
-    if (gated) {
-      md = (g === "hk" ? "*⟡ A veil thins — this lies beyond " : "*⟡ Careful, weaver — this lies past ") + hit.gateTitle + ", further than you've marked. Faint spoilers follow.*\n\n" + md;
-    }
-    return Promise.resolve({ answer: md, citations: nudge ? hit.cites.slice(0, 1).map(mk) : hit.cites.map(mk) });
+const EMPTY_BEATS = { abilities: [], areas: [], bosses: [] };
+
+// ─── Real API (proxied to the FastAPI backend via next.config rewrites) ───
+async function fetchBeats(gameKey) {
+  try {
+    const r = await fetch(`/api/beats?game=${gameKey}`);
+    if (!r.ok) throw new Error();
+    return await r.json();
+  } catch {
+    return EMPTY_BEATS;
   }
-  if (/where|next|should i go|what now|stuck/i.test(body.question)) {
-    const tier = NEXT[g].find((t) => done.length <= t[0]) || NEXT[g][NEXT[g].length - 1];
-    return Promise.resolve({ answer: tier[1], citations: [] });
-  }
-  const md = g === "hk"
-    ? "Hm. That question drifts beyond the paths I know well, little ghost. I keep counsel on **bosses**, **abilities**, and **where to wander next**.\n\nTry asking of a foe by name — *\"How do I beat the Mantis Lords?\"* — or simply, *\"Where should I go?\"*"
-    : "That thread frays beyond my weave, I'm afraid. Ask me of **foes**, **tools**, or **where the climb leads next**.\n\nTry a name — *\"How do I beat Lace?\"* — or simply, *\"Where should I go?\"*";
-  return Promise.resolve({ answer: md, citations: [] });
+}
+async function postQuery(body) {
+  const r = await fetch("/api/query", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error("query failed");
+  return await r.json();
 }
 
 // ─── Markdown → React ───
@@ -201,11 +77,12 @@ function mdRender(md) {
 
 export default function CompanionCube() {
   const [game, setGame] = useState("hk");
+  const [beats, setBeats] = useState(EMPTY_BEATS);
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState("hold_my_hand");
   const [tolerance, setTolerance] = useState("none");
-  const [checked, setChecked] = useState({ hk: ["crossroads", "false_knight"], ss: ["moss_grotto"] });
+  const [checked, setChecked] = useState({ hk: [], ss: [] });
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -224,6 +101,14 @@ export default function CompanionCube() {
   const gameRef = useRef(game);
   reduceMotionRef.current = reduceMotion;
   gameRef.current = game;
+
+  // Load the checklist for the current game from the backend.
+  useEffect(() => {
+    let alive = true;
+    const gk = game === "ss" ? "silksong" : "hollow_knight";
+    fetchBeats(gk).then((b) => { if (alive) setBeats(b || EMPTY_BEATS); });
+    return () => { alive = false; };
+  }, [game]);
 
   // Canvas dust background + mouse parallax
   useEffect(() => {
@@ -273,6 +158,7 @@ export default function CompanionCube() {
 
   useEffect(() => { if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight; }, [messages]);
 
+  // Word-by-word reveal of the answer the backend returns (light, purely cosmetic).
   const stream = useCallback((msgId, res) => {
     const words = res.answer.split(/(\s+)/);
     const start = Date.now();
@@ -280,44 +166,48 @@ export default function CompanionCube() {
       const i = Math.min(words.length, Math.max(2, Math.round(((Date.now() - start) / 1000) * 90)));
       const partial = words.slice(0, i).join("");
       const complete = i >= words.length;
-      setMessages((s) => s.map((m) => (m.id === msgId ? { ...m, pending: false, md: partial, citations: complete ? res.citations : [], gated: res.gated } : m)));
+      setMessages((s) => s.map((m) => (m.id === msgId ? { ...m, pending: false, md: partial, citations: complete ? res.citations : [] } : m)));
       if (!complete) streamTRef.current = setTimeout(tick, 34);
     };
     tick();
   }, []);
 
-  const ask = useCallback((q) => {
-    if (!q.trim()) return;
+  const ask = useCallback((qtext) => {
+    if (!qtext.trim()) return;
     const gameKey = game === "ss" ? "silksong" : "hollow_knight";
     const id = Date.now();
     setInput("");
-    setMessages((s) => [...s, { id, role: "user", md: q }, { id: id + 1, role: "guide", md: "", pending: true, citations: [] }]);
+    setMessages((s) => [...s, { id, role: "user", md: qtext }, { id: id + 1, role: "guide", md: "", pending: true, citations: [] }]);
     const el = sendBtnRef.current;
     if (el) { el.style.animation = "none"; requestAnimationFrame(() => { if (sendBtnRef.current) sendBtnRef.current.style.animation = "sendGlow .9s ease-out"; }); }
-    apiQuery({ question: q, game: gameKey, mode, tolerance, completed_beats: checked[game] })
-      .then((res) => setTimeout(() => stream(id + 1, res), 700 + Math.random() * 500));
+    postQuery({ question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game] })
+      .then((res) => stream(id + 1, res))
+      .catch(() => stream(id + 1, { answer: "*The link to the archives is broken.*\n\nIs the backend running? Start it with `uvicorn api.main:app --port 8000` from the repo root.", citations: [] }));
   }, [game, mode, tolerance, checked, stream]);
 
   // ─── derived view values ───
   const t = THEMES[game];
-  const gk = game === "ss" ? "silksong" : "hollow_knight";
-  const data = DATA[gk];
   const done = checked[game];
-  const all = [...data.abilities, ...data.areas, ...data.bosses];
+  const all = [...beats.abilities, ...beats.areas, ...beats.bosses];
   const q = search.trim().toLowerCase();
   const hkOn = game === "hk", ssOn = game === "ss";
 
   const toggleItem = (id) => setChecked((st) => ({ ...st, [game]: done.includes(id) ? st[game].filter((x) => x !== id) : [...st[game], id] }));
-  const setPreset = (tier) => setChecked((st) => ({ ...st, [game]: [...PRESETS[game][tier]] }));
+  const allIds = all.map((a) => a.id);
+  const setPreset = (tier) => {
+    const ids = tier === "just" ? [] : tier === "end" ? allIds : allIds.slice(0, Math.ceil(allIds.length / 2));
+    setChecked((st) => ({ ...st, [game]: ids }));
+  };
 
   const groups = [["Abilities", "abilities"], ["Areas", "areas"], ["Bosses", "bosses"]].map(([name, key]) => {
-    const items = data[key].filter((it) => !q || it.title.toLowerCase().includes(q));
-    const doneN = data[key].filter((it) => done.includes(it.id)).length;
-    return { name, key, items, count: doneN + "/" + data[key].length };
+    const list = beats[key] || [];
+    const items = list.filter((it) => !q || it.title.toLowerCase().includes(q));
+    const doneN = list.filter((it) => done.includes(it.id)).length;
+    return { name, key, items, count: doneN + "/" + list.length };
   }).filter((g) => g.items.length > 0);
 
   const checkedCount = done.filter((id) => all.some((a) => a.id === id)).length;
-  const progressPct = Math.round((100 * checkedCount) / all.length) + "%";
+  const progressPct = (all.length ? Math.round((100 * checkedCount) / all.length) : 0) + "%";
 
   const seg = (opts, cur, set) => opts.map(([val, label, tip]) => ({
     label, tip: tip || "", val,
@@ -341,7 +231,7 @@ export default function CompanionCube() {
       align: user ? "flex-end" : "flex-start",
       radius: user ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
       bg: user ? t.userBg : t.guideBg,
-      bd: user ? t.userBd : (m.gated ? t.glowDim : t.border),
+      bd: user ? t.userBd : t.border,
       body: user ? m.md : mdRender(m.md || ""),
       hasCites: !user && (m.citations || []).length > 0,
       citations: m.citations || [],
@@ -358,13 +248,11 @@ export default function CompanionCube() {
 
       {/* ── animated background ── */}
       <div ref={bgWrapRef} style={{ position: "absolute", inset: -40, pointerEvents: "none", willChange: "transform" }}>
-        {/* Hallownest */}
         <div style={{ position: "absolute", inset: 0, opacity: hkOn ? 1 : 0, transition: "opacity 1600ms ease", background: "radial-gradient(120% 90% at 50% -10%, #10263f 0%, #081527 34%, #04090f 68%, #02050a 100%)" }}>
           <div style={{ position: "absolute", left: "50%", top: "-12%", width: "26vw", height: "130%", transform: "translateX(-50%)", transformOrigin: "top center", background: "linear-gradient(to bottom, rgba(110,180,250,.22), rgba(110,180,250,.05) 55%, transparent 80%)", filter: "blur(28px)", animation: "beamSway1 11s ease-in-out infinite", animationPlayState: reduceMotion ? "paused" : "running" }} />
           <div style={{ position: "absolute", left: "50%", top: "-12%", width: "12vw", height: "130%", transform: "translateX(-50%)", transformOrigin: "top center", background: "linear-gradient(to bottom, rgba(160,215,255,.30), rgba(160,215,255,.06) 60%, transparent 82%)", filter: "blur(18px)", animation: "beamSway2 9s ease-in-out infinite", animationPlayState: reduceMotion ? "paused" : "running" }} />
           <div style={{ position: "absolute", left: "50%", top: "-12%", width: "40vw", height: "120%", transform: "translateX(-50%)", transformOrigin: "top center", background: "linear-gradient(to bottom, rgba(80,150,230,.12), transparent 70%)", filter: "blur(46px)", animation: "beamSway3 14s ease-in-out infinite", animationPlayState: reduceMotion ? "paused" : "running" }} />
         </div>
-        {/* Pharloom */}
         <div style={{ position: "absolute", inset: 0, opacity: ssOn ? 1 : 0, transition: "opacity 1600ms ease", background: "radial-gradient(120% 90% at 62% -6%, #3a1710 0%, #24100b 36%, #120705 66%, #0a0403 100%)" }}>
           <div style={{ position: "absolute", left: "62%", top: "-12%", width: "24vw", height: "130%", transform: "translateX(-50%)", transformOrigin: "top center", background: "linear-gradient(to bottom, rgba(232,180,106,.20), rgba(232,180,106,.04) 55%, transparent 80%)", filter: "blur(26px)", animation: "beamSway2 12s ease-in-out infinite", animationPlayState: reduceMotion ? "paused" : "running" }} />
           <div style={{ position: "absolute", left: "62%", top: "-12%", width: "11vw", height: "130%", transform: "translateX(-50%)", transformOrigin: "top center", background: "linear-gradient(to bottom, rgba(245,205,140,.26), rgba(245,205,140,.05) 60%, transparent 82%)", filter: "blur(16px)", animation: "beamSway1 10s ease-in-out infinite", animationPlayState: reduceMotion ? "paused" : "running" }} />
@@ -372,20 +260,17 @@ export default function CompanionCube() {
         </div>
         <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
       </div>
-      {/* vignette */}
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `radial-gradient(ellipse 105% 90% at 50% 45%, transparent 42%, rgba(0,0,0,${VIGNETTE}) 100%)` }} />
 
       {/* ── app ── */}
       <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
 
-        {/* top bar */}
         <header style={{ display: "flex", alignItems: "center", gap: 20, padding: "14px 26px", borderBottom: `1px solid ${t.border}`, transition: "border-color 1200ms ease", backdropFilter: "blur(4px)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 280 }}>
             <span style={{ fontSize: 15, color: t.glow, transition: "color 1200ms ease" }}>❖</span>
             <span style={{ fontFamily: cin, fontWeight: 600, fontSize: 17, letterSpacing: ".32em", textTransform: "uppercase", animation: "titleGlow 6s ease-in-out infinite" }}>CompanionCube</span>
           </div>
 
-          {/* game switch */}
           <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 4, border: `1px solid ${t.border}`, borderRadius: 999, padding: 4, background: t.panelBg, transition: "border-color 1200ms ease, background 1200ms ease" }}>
               {[["hk", "Hollow Knight", "/assets/icon-hk.png", hkOn, "rgba(168,216,255,.45)"], ["ss", "Silksong", "/assets/icon-ss.png", ssOn, "rgba(232,180,106,.5)"]].map(([g, label, ic, on, iconGlow]) => (
@@ -415,10 +300,8 @@ export default function CompanionCube() {
           </div>
         </header>
 
-        {/* body */}
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
 
-          {/* progress panel */}
           <aside style={{ width: collapsed ? 0 : 312, minWidth: 0, transition: "width 500ms cubic-bezier(.4,0,.2,1)", overflow: "hidden", borderRight: `1px solid ${t.border}`, background: t.panelBg, backdropFilter: "blur(6px)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
             <div style={{ width: 312, display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
               <div style={{ padding: "18px 20px 12px" }}>
@@ -440,6 +323,11 @@ export default function CompanionCube() {
               </div>
 
               <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 20px", minHeight: 0 }}>
+                {all.length === 0 && (
+                  <div style={{ padding: "20px 8px", fontSize: 14, color: t.textDim, fontStyle: "italic", lineHeight: 1.5 }}>
+                    {game === "ss" ? "Pharloom is still being charted…" : "Loading the map of Hallownest…"}
+                  </div>
+                )}
                 {groups.map((g) => (
                   <div key={g.key} style={{ marginTop: 14 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 6px" }}>
@@ -463,11 +351,9 @@ export default function CompanionCube() {
             </div>
           </aside>
 
-          {/* collapse handle */}
           <button className="cc-settings" onClick={() => setCollapsed((v) => !v)} title="Toggle progress panel"
             style={{ width: 20, border: "none", background: "transparent", color: t.textDim, cursor: "pointer", fontSize: 11, flexShrink: 0, transition: "color 300ms" }}>{collapsed ? "❯" : "❮"}</button>
 
-          {/* chat */}
           <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
             <div ref={transcriptRef} style={{ flex: 1, overflowY: "auto", padding: "28px 8% 16px", minHeight: 0 }}>
 
@@ -525,7 +411,6 @@ export default function CompanionCube() {
               ))}
             </div>
 
-            {/* composer */}
             <div style={{ padding: "0 8% 22px", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, flexWrap: "wrap" }}>
                 {[["Guidance", modeOpts], ["Spoiler ward", tolOpts]].map(([label, opts]) => (
