@@ -17,7 +17,7 @@ from typing import cast
 
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
+from qdrant_client.models import Condition, FieldCondition, Filter, MatchAny, MatchValue
 
 from .models import PlayerState, SpoilerTolerance
 
@@ -72,7 +72,7 @@ def gate_filter(player: PlayerState, tolerance: SpoilerTolerance, game: str) -> 
         (Filter(must_not=[FieldCondition(key="reveals_beats", match=MatchAny(any=uncompleted))])
          if uncompleted else Filter()),
     ]
-    protected_cond = (
+    protected_cond: "list[Condition] | None" = (
         [FieldCondition(key="reveals_beats", match=MatchAny(any=protected_unseen))]
         if protected_unseen else None
     )
