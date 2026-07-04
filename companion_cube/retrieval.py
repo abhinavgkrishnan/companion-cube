@@ -12,6 +12,7 @@ reached beats" becomes "reveals none of the uncompleted beats" (must_not · matc
 import atexit
 import json
 from pathlib import Path
+from typing import cast
 
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
@@ -61,10 +62,10 @@ def gate_filter(player: PlayerState, tolerance: SpoilerTolerance, game: str) -> 
 
 
 def retrieve(query, player: PlayerState, tolerance: SpoilerTolerance = SpoilerTolerance.NONE,
-             game: str = DEFAULT_GAME, k=5):
+             game: str = DEFAULT_GAME, k=5) -> list[dict]:
     """Return up to k gate-allowed chunk payloads for the given game, nearest first."""
     embedder, client = _resources()
-    qvec = list(embedder.embed([query]))[0].tolist()
+    qvec = cast("list[float]", list(embedder.embed([query]))[0].tolist())
     res = client.query_points(
         collection_name=game,
         query=qvec,
@@ -72,4 +73,4 @@ def retrieve(query, player: PlayerState, tolerance: SpoilerTolerance = SpoilerTo
         limit=k,
         with_payload=True,
     )
-    return [pt.payload for pt in res.points]
+    return [pt.payload or {} for pt in res.points]

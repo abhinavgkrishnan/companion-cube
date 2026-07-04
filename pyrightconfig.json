@@ -1,0 +1,6 @@
+{
+  "extraPaths": ["."],
+  "pythonVersion": "3.10",
+  "exclude": ["**/node_modules", "**/.next", "web", "data", "**/__pycache__", ".venv"],
+  "reportMissingModuleSource": false
+}

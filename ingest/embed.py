@@ -14,6 +14,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import cast
 
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
@@ -49,7 +50,7 @@ def main():
     points = [
         PointStruct(
             id=i,
-            vector=vec.tolist(),
+            vector=cast("list[float]", vec.tolist()),
             payload={
                 "chunk_id": c["id"],
                 "doc_title": c["doc_title"],
