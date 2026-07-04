@@ -38,9 +38,11 @@ PERSONA = {
 }
 
 GROUNDING = (
-    " Ground every claim ONLY in the provided guide excerpts. If they do not hold the answer, say so in "
-    "character — that this knowledge lies beyond your sight — and never invent details. Stay in voice, "
-    "but be genuinely clear and useful; keep it fairly brief."
+    " Ground every claim ONLY in the provided guide excerpts — never invent specifics. If they do not "
+    "hold what the seeker asks, it lies beyond where they have yet walked: say so in character, that it "
+    "is a matter for a later time, and point them gently toward a next step that fits where they stand. "
+    "Tailor what you surface to the seeker's marked progress, favouring what is reachable now. Stay in "
+    "voice; be clear and useful; keep it fairly brief."
 )
 
 MODE_INSTRUCTIONS = {
@@ -52,7 +54,7 @@ MODE_INSTRUCTIONS = {
 }
 
 
-def build_prompt(query, chunks, mode: Mode, game: str) -> tuple[str, str]:
+def build_prompt(query, chunks, mode: Mode, game: str, progress: str = "") -> tuple[str, str]:
     system = PERSONA.get(game, PERSONA["hollow_knight"]) + GROUNDING
     if chunks:
         excerpts = "\n\n".join(f"({c['doc_title']} / {c['section']}) {c['text']}" for c in chunks)
@@ -60,6 +62,7 @@ def build_prompt(query, chunks, mode: Mode, game: str) -> tuple[str, str]:
         excerpts = "(no lore is available at the seeker's current progress)"
     user = (
         f"{MODE_INSTRUCTIONS[mode]}\n\n"
+        f"Where the seeker stands: {progress or 'the very beginning of the journey'}\n\n"
         f"Guide excerpts:\n{excerpts}\n\n"
         f"The seeker asks: {query}"
     )
@@ -105,7 +108,8 @@ def default_llm() -> LLM:
     return DryRunLLM()
 
 
-def generate(query, chunks, mode: Mode, game: str = "hollow_knight", llm: LLM | None = None) -> str:
+def generate(query, chunks, mode: Mode, game: str = "hollow_knight", progress: str = "",
+             llm: LLM | None = None) -> str:
     llm = llm or default_llm()
-    system, user = build_prompt(query, chunks, mode, game)
+    system, user = build_prompt(query, chunks, mode, game, progress)
     return llm.complete(system, user)

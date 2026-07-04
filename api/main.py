@@ -53,7 +53,7 @@ ORDER = {
     },
 }
 
-JUNK_DOCS = EXCLUDE | {"gallery", "controls", "trivia"}   # meta pages to keep out of retrieval
+JUNK_DOCS = EXCLUDE | {"gallery", "controls", "trivia", "completion"}   # meta pages to keep out of retrieval
 
 app = FastAPI(title="CompanionCube API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -91,6 +91,26 @@ class Query(BaseModel):
     completed_beats: list[str] = []
 
 
+def _progress_summary(game: str, completed: list[str]) -> str:
+    """A short, human phrasing of where the player stands, for the guide to tailor its answer."""
+    if not completed or not _indexed(game):
+        return ""
+    tax = json.loads((ROOT / "data" / game / "beats.json").read_text())
+    groups = {"area": [], "ability": [], "boss": []}
+    for b in completed:
+        info = tax.get(b)
+        if info and info["type"] in groups:
+            groups[info["type"]].append(SUFFIX.sub("", info["title"]))
+    parts = []
+    if groups["area"]:
+        parts.append("reached " + ", ".join(sorted(groups["area"])))
+    if groups["ability"]:
+        parts.append("wields " + ", ".join(sorted(groups["ability"])))
+    if groups["boss"]:
+        parts.append("has bested " + ", ".join(sorted(groups["boss"])))
+    return "; ".join(parts)
+
+
 @app.post("/api/query")
 def query(q: Query):
     if not _indexed(q.game):
@@ -107,7 +127,8 @@ def query(q: Query):
         return {"answer": "*That kingdom is not yet mapped.*\n\nIts pages are still being indexed — check back soon.", "citations": []}
 
     hits = [h for h in hits if SUFFIX.sub("", h["doc_title"]).lower() not in JUNK_DOCS][:6]
-    answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game)).strip()
+    progress = _progress_summary(q.game, q.completed_beats)
+    answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game, progress=progress)).strip()
 
     seen, citations = set(), []
     for h in hits:

@@ -65,10 +65,14 @@ function mdInline(text, key) {
 function mdRender(md) {
   const blocks = []; let list = null; let k = 0;
   const flush = () => { if (list) { blocks.push(React.createElement("ul", { key: "ul" + k++, style: { margin: "8px 0", paddingLeft: 22 } }, list)); list = null; } };
+  const heading = (text, size, mt) => React.createElement("div", { key: "h" + k++, style: { fontFamily: "Cinzel, serif", fontSize: size, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", margin: mt + "px 0 8px", opacity: 0.9 } }, mdInline(text, "h" + k));
   md.split("\n").forEach((line) => {
     const t = line.trim();
     if (!t) { flush(); return; }
-    if (t.startsWith("### ")) { flush(); blocks.push(React.createElement("div", { key: "h" + k++, style: { fontFamily: "Cinzel, serif", fontSize: 13, fontWeight: 600, letterSpacing: ".2em", textTransform: "uppercase", margin: "14px 0 6px", opacity: 0.8 } }, mdInline(t.slice(4), "h" + k))); return; }
+    if (t === "---" || t === "***" || t === "___") { flush(); blocks.push(React.createElement("hr", { key: "hr" + k++, style: { border: "none", height: 1, background: "rgba(255,255,255,.12)", margin: "16px 0" } })); return; }
+    if (t.startsWith("### ")) { flush(); blocks.push(heading(t.slice(4), 13, 14)); return; }
+    if (t.startsWith("## ")) { flush(); blocks.push(heading(t.slice(3), 15, 18)); return; }
+    if (t.startsWith("# ")) { flush(); blocks.push(heading(t.slice(2), 18, 20)); return; }
     if (t.startsWith("- ")) { list = list || []; list.push(React.createElement("li", { key: "li" + k++, style: { margin: "4px 0" } }, mdInline(t.slice(2), "li" + k))); return; }
     flush(); blocks.push(React.createElement("p", { key: "p" + k++, style: { margin: "6px 0" } }, mdInline(t, "p" + k)));
   });
@@ -82,7 +86,7 @@ export default function CompanionCube() {
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState("hold_my_hand");
   const [tolerance, setTolerance] = useState("none");
-  const [checked, setChecked] = useState({ hk: [], ss: [] });
+  const [checked, setChecked] = useState({ hk: ["forgotten_crossroads"], ss: ["moss_grotto"] });
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
