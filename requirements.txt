@@ -1,0 +1,9 @@
+# --- ingestion + retrieval (current) ---
+pytest>=8.0
+anthropic>=0.40           # spoiler tagging + generation (Claude)
+qdrant-client>=1.9        # vector store + payload (metadata) filtering
+fastembed>=0.3            # dense (and later sparse / rerank) embeddings — ONNX, no torch
+
+# --- later phases ---
+# fastapi>=0.110          # api/ layer
+# uvicorn>=0.29           # api/ server
