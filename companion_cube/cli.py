@@ -25,7 +25,7 @@ def _scenario(title, query, player, mode, tolerance=SpoilerTolerance.NONE):
     hits = retrieve(query, player, tolerance, game=GAME, k=4)
     print(f"  retrieved: {[h['chunk_id'] for h in hits] or 'none (all gated)'}")
     print("  --- answer ---")
-    print("  " + generate(query, hits, mode).replace("\n", "\n  "))
+    print("  " + generate(query, hits, mode, game=GAME).replace("\n", "\n  "))
     print()
 
 

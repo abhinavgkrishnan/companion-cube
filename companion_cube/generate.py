@@ -26,36 +26,44 @@ def load_env():
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-SYSTEM_GROUNDING = (
-    "You are a Hollow Knight guide. Answer ONLY using the provided guide excerpts. "
-    "If the excerpts do not contain the answer, say you don't know — never invent details. "
-    "Cite excerpts inline by their [id]."
+PERSONA = {
+    "hollow_knight": (
+        "You are the Guide of Hallownest — an ancient, knowing voice aiding a small vessel, whom you "
+        "address as \"little ghost\". Speak with quiet, lyrical gravity in the mood of Hollow Knight."
+    ),
+    "silksong": (
+        "You are the Weaver of Pharloom — a wry, watchful voice aiding a pilgrim of the needle, whom you "
+        "address as \"little weaver\". Speak with the crimson, silken texture of Silksong."
+    ),
+}
+
+GROUNDING = (
+    " Ground every claim ONLY in the provided guide excerpts. If they do not hold the answer, say so in "
+    "character — that this knowledge lies beyond your sight — and never invent details. Stay in voice, "
+    "but be genuinely clear and useful; keep it fairly brief."
 )
 
 MODE_INSTRUCTIONS = {
-    Mode.HOLD_MY_HAND: (
-        "Give complete, step-by-step guidance drawn from the excerpts. Be specific and thorough."
-    ),
+    Mode.HOLD_MY_HAND: "Give complete, step-by-step guidance drawn from the excerpts, in your voice.",
     Mode.GENTLY_NUDGE: (
-        "Give only a gentle hint that points the player in the right direction. Do NOT reveal the "
-        "full solution, exact locations, item names, or outcomes — nudge, don't spoil."
+        "Give only a gentle, riddling hint that points the way — never the full solution, exact "
+        "locations, item names, or outcomes."
     ),
 }
 
 
-def build_prompt(query, chunks, mode: Mode) -> tuple[str, str]:
+def build_prompt(query, chunks, mode: Mode, game: str) -> tuple[str, str]:
+    system = PERSONA.get(game, PERSONA["hollow_knight"]) + GROUNDING
     if chunks:
-        excerpts = "\n\n".join(
-            f"[{c['chunk_id']}] ({c['doc_title']} / {c['section']}) {c['text']}" for c in chunks
-        )
+        excerpts = "\n\n".join(f"({c['doc_title']} / {c['section']}) {c['text']}" for c in chunks)
     else:
-        excerpts = "(no guide content available at the player's current progress)"
+        excerpts = "(no lore is available at the seeker's current progress)"
     user = (
         f"{MODE_INSTRUCTIONS[mode]}\n\n"
         f"Guide excerpts:\n{excerpts}\n\n"
-        f"Player question: {query}"
+        f"The seeker asks: {query}"
     )
-    return SYSTEM_GROUNDING, user
+    return system, user
 
 
 class LLM(Protocol):
@@ -97,7 +105,7 @@ def default_llm() -> LLM:
     return DryRunLLM()
 
 
-def generate(query, chunks, mode: Mode, llm: LLM | None = None) -> str:
+def generate(query, chunks, mode: Mode, game: str = "hollow_knight", llm: LLM | None = None) -> str:
     llm = llm or default_llm()
-    system, user = build_prompt(query, chunks, mode)
+    system, user = build_prompt(query, chunks, mode, game)
     return llm.complete(system, user)

@@ -27,6 +27,33 @@ from companion_cube.retrieval import retrieve
 ROOT = Path(__file__).resolve().parent.parent
 TYPE_GROUP = {"ability": "abilities", "area": "areas", "boss": "bosses"}
 INLINE_CITE = re.compile(r"\s*\[[^\]]*::\d+\]")
+SUFFIX = re.compile(r"\s*\((?:Hollow Knight|Silksong)\)$")
+
+# meta / overview / hub pages that aren't checkable progression items
+EXCLUDE = {
+    "spells and abilities", "areas", "bosses", "enemies", "charms", "items", "updates",
+    "achievements", "npcs", "maps", "equipment", "fast travel", "hollow knight", "silksong",
+    "the hunter's journal", "combat", "currency",
+}
+
+# rough progression order for the main items; anything unlisted falls to the end, alphabetical
+ORDER = {
+    "hollow_knight": {
+        "areas": ["Forgotten Crossroads", "Greenpath", "Fungal Wastes", "Fog Canyon", "City of Tears",
+                  "Crystal Peak", "Royal Waterways", "Deepnest", "Ancient Basin", "Kingdom's Edge",
+                  "Queen's Gardens", "The Hive", "Colosseum of Fools", "The Abyss", "White Palace", "Godhome"],
+        "abilities": ["Vengeful Spirit", "Mothwing Cloak", "Mantis Claw", "Desolate Dive", "Crystal Heart",
+                      "Shade Soul", "Isma's Tear", "Monarch Wings", "Dream Nail", "Descending Dark",
+                      "Shade Cloak", "Abyss Shriek", "Awoken Dream Nail", "Dream Gate", "King's Brand",
+                      "Void Heart", "World Sense"],
+        "bosses": ["False Knight", "Gruz Mother", "Vengefly King", "Hornet Protector", "Massive Moss Charger",
+                   "Mantis Lords", "Soul Warrior", "Soul Master", "Crystal Guardian", "Dung Defender",
+                   "Broken Vessel", "Nosk", "Watcher Knights", "Uumuu", "Hornet Sentinel", "Traitor Lord",
+                   "The Collector", "The Hollow Knight", "The Radiance"],
+    },
+}
+
+JUNK_DOCS = EXCLUDE | {"gallery", "controls", "trivia"}   # meta pages to keep out of retrieval
 
 app = FastAPI(title="CompanionCube API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -42,10 +69,17 @@ def beats(game: str = "hollow_knight"):
         return {"abilities": [], "areas": [], "bosses": []}
     tax = json.loads((ROOT / "data" / game / "beats.json").read_text())
     out = {"abilities": [], "areas": [], "bosses": []}
-    for bid, b in sorted(tax.items(), key=lambda kv: kv[1]["title"]):
+    for bid, b in tax.items():
         group = TYPE_GROUP.get(b["type"])
-        if group:
-            out[group].append({"id": bid, "title": b["title"]})
+        if not group:
+            continue
+        title = SUFFIX.sub("", b["title"])
+        if title.lower() in EXCLUDE:                 # drop category/overview hub pages
+            continue
+        out[group].append({"id": bid, "title": title})
+    for group, items in out.items():                  # progression order, then alphabetical tail
+        rank = {name: i for i, name in enumerate(ORDER.get(game, {}).get(group, []))}
+        items.sort(key=lambda it: (rank.get(it["title"], len(rank)), it["title"]))
     return out
 
 
@@ -67,12 +101,13 @@ def query(q: Query):
     mode = Mode(q.mode) if q.mode in ("hold_my_hand", "gently_nudge") else Mode.HOLD_MY_HAND
 
     try:
-        hits = retrieve(q.question, player, tol, game=q.game, k=6)
+        hits = retrieve(q.question, player, tol, game=q.game, k=12)
     except Exception:
         # collection not built yet (e.g. tagged but not embedded)
         return {"answer": "*That kingdom is not yet mapped.*\n\nIts pages are still being indexed — check back soon.", "citations": []}
 
-    answer = INLINE_CITE.sub("", generate(q.question, hits, mode)).strip()
+    hits = [h for h in hits if SUFFIX.sub("", h["doc_title"]).lower() not in JUNK_DOCS][:6]
+    answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game)).strip()
 
     seen, citations = set(), []
     for h in hits:
