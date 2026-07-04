@@ -2,15 +2,16 @@
 
 Beats (progression milestones) come from the wiki categories: abilities, bosses, areas, events.
 For each doc, Claude reads its chunks + the taxonomy and assigns, per chunk:
-  reveals_beats  - which milestones the chunk discloses (its own subject + any cross-references)
-  spoiler_level  - mechanics (universal, always safe) | light (specific ability/area/mini-boss)
-                   | major_plot (story, endings, major/final bosses)
-  region         - the in-game area it concerns
+  reveals_beats / spoiler_level / region.
+
+The taxonomy + instructions are identical across every call, so they live in a cached system block
+(Anthropic prompt caching): the constant prefix is written once and read cheaply on every later doc.
+Only each doc's chunks vary, after the cache breakpoint.
 
 Per-doc results are cached in data/tags/ — LLM calls are the expensive step, so this is resumable.
 Assembles data/chunks_tagged.json and writes the taxonomy to data/beats.json.
 
-Run:  python ingest/tag.py     (needs ANTHROPIC_API_KEY)
+Run:  python ingest/tag.py     (needs ANTHROPIC_API_KEY, via env or .env)
 """
 
 import json
@@ -22,10 +23,15 @@ from pathlib import Path
 import anthropic
 
 ROOT = Path(__file__).resolve().parent.parent
+CLEAN = ROOT / "data" / "clean"
+CHUNKS = ROOT / "data" / "chunks.json"
+TAGS = ROOT / "data" / "tags"
+OUT = ROOT / "data" / "chunks_tagged.json"
+BEATS = ROOT / "data" / "beats.json"
+MODEL = "claude-sonnet-4-6"
 
 
 def load_env():
-    # read a gitignored .env so ANTHROPIC_API_KEY doesn't need to live in the shell profile
     env = ROOT / ".env"
     if env.exists():
         for line in env.read_text().splitlines():
@@ -33,12 +39,6 @@ def load_env():
             if line and not line.startswith("#") and "=" in line:
                 k, _, v = line.partition("=")
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-CLEAN = ROOT / "data" / "clean"
-CHUNKS = ROOT / "data" / "chunks.json"
-TAGS = ROOT / "data" / "tags"
-OUT = ROOT / "data" / "chunks_tagged.json"
-BEATS = ROOT / "data" / "beats.json"
-MODEL = "claude-sonnet-4-6"
 
 
 def slug(t):
@@ -88,7 +88,7 @@ TAG_TOOL = {
     },
 }
 
-PROMPT = """You are tagging chunks of a Hollow Knight wiki for a spoiler-aware guide.
+INSTRUCTIONS = """You are tagging chunks of a Hollow Knight wiki for a spoiler-aware guide.
 
 Beat taxonomy (canonical progression milestones — use these exact ids in reveals_beats):
 {taxonomy}
@@ -102,31 +102,31 @@ For each chunk, decide:
 - reveals_beats: which beat ids the chunk discloses. Include the chunk's own subject if it reveals that
   ability/boss/area exists or how to obtain/beat/reach it, PLUS any other beats it cross-references.
 - spoiler_level: per the definitions above. A chunk with any reveals_beats must NOT be mechanics.
-- region: the in-game area it concerns, or "" if none.
+- region: the in-game area it concerns, or "" if none."""
 
-Document: {title}  (type: {dtype}; categories: {cats})
+USER = """Document: {title}  (type: {dtype}; categories: {cats})
 
 Chunks:
-{chunks}
-"""
+{chunks}"""
 
 
-def tag_doc(client, doc, chunks, taxonomy):
-    tax_str = "\n".join(f"- {bid} ({b['type']}): {b['title']}" for bid, b in taxonomy.items())
+def tag_doc(client, doc, chunks, system_blocks):
     chunks_str = "\n\n".join(f"[{c['id']}] (section: {c['section']})\n{c['text']}" for c in chunks)
-    prompt = PROMPT.format(
-        taxonomy=tax_str, title=doc["title"], dtype=beat_type(doc["categories"]),
+    user = USER.format(
+        title=doc["title"], dtype=beat_type(doc["categories"]),
         cats=", ".join(doc["categories"]), chunks=chunks_str,
     )
     resp = client.messages.create(
         model=MODEL, max_tokens=4000,
+        system=system_blocks,                                  # cached constant prefix
         tools=[TAG_TOOL], tool_choice={"type": "tool", "name": "submit_tags"},
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": user}],
     )
+    tags = {}
     for block in resp.content:
         if block.type == "tool_use":
-            return {t["chunk_id"]: t for t in block.input["tags"]}
-    return {}
+            tags = {t["chunk_id"]: t for t in block.input["tags"]}
+    return tags, resp.usage
 
 
 def main():
@@ -134,6 +134,13 @@ def main():
     TAGS.mkdir(parents=True, exist_ok=True)
     docs = [json.loads(p.read_text()) for p in sorted(CLEAN.glob("*.json"))]
     taxonomy = build_taxonomy(docs)
+    tax_str = "\n".join(f"- {bid} ({b['type']}): {b['title']}" for bid, b in taxonomy.items())
+    system_blocks = [{
+        "type": "text",
+        "text": INSTRUCTIONS.format(taxonomy=tax_str),
+        "cache_control": {"type": "ephemeral"},                # cache taxonomy + instructions (+ tools)
+    }]
+
     chunks = json.loads(CHUNKS.read_text())
     by_doc = {}
     for c in chunks:
@@ -141,21 +148,24 @@ def main():
 
     client = anthropic.Anthropic()
     all_tags = {}
+    cache_read = cache_write = 0
     for doc in docs:
         cache = TAGS / f"{slug(doc['title'])}.json"
         if cache.exists():
-            print(f"cached  {doc['title']}")
             all_tags.update(json.loads(cache.read_text()))
             continue
         try:
-            tags = tag_doc(client, doc, by_doc.get(doc["title"], []), taxonomy)
+            tags, usage = tag_doc(client, doc, by_doc.get(doc["title"], []), system_blocks)
         except Exception as e:
             print(f"FAIL    {doc['title']}: {e}")
             continue
         cache.write_text(json.dumps(tags, indent=2, ensure_ascii=False))
         all_tags.update(tags)
-        print(f"tagged  {doc['title']:26} ({len(tags)} chunks)")
-        time.sleep(0.5)
+        cache_read += getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_write += getattr(usage, "cache_creation_input_tokens", 0) or 0
+        print(f"tagged  {doc['title'][:28]:28} ({len(tags)} chunks)  "
+              f"cache_read={getattr(usage, 'cache_read_input_tokens', 0)}")
+        time.sleep(0.3)
 
     for c in chunks:
         t = all_tags.get(c["id"], {})
@@ -171,6 +181,7 @@ def main():
 
     lv = Counter(c["spoiler_level"] for c in chunks)
     print(f"\nassembled {OUT.name}: {dict(lv)} across {len(chunks)} chunks; {len(taxonomy)} beats")
+    print(f"prompt cache: {cache_write} tokens written, {cache_read} read")
 
 
 if __name__ == "__main__":
