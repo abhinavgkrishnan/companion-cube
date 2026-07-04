@@ -2,7 +2,8 @@
 
 Source: hollowknight.wiki (MediaWiki 1.41, CC BY-SA 3.0). API lives at /mw/api.php, not /w/.
 The wiki hosts both Hollow Knight and Silksong, so we enumerate every non-redirect page and keep only
-those whose categories mark them Hollow Knight. Wikitext keeps everything downstream tagging needs:
+those matching the selected GAME (Hollow Knight by default; see GAME below). Wikitext keeps everything
+downstream tagging needs:
 [[Category:...]] tags, {{Infobox}} templates, section headings, internal links. One JSON per kept page
 in data/raw/, source URL kept for attribution.
 
@@ -13,6 +14,8 @@ Run:  python ingest/extract_wiki.py
 """
 
 import json
+import os
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -24,6 +27,12 @@ UA = "companion-cube/0.1 (portfolio RAG project; github.com/abhinavgkrishnan)"
 OUT = Path(__file__).resolve().parent.parent / "data" / "raw"
 LEDGER = OUT / ".seen.json"
 DELAY_S = 0.3
+
+# which game's pages to keep — set via first CLI arg or the GAME env var
+#   python ingest/extract_wiki.py            -> hollow_knight (default)
+#   python ingest/extract_wiki.py silksong   -> silksong
+#   GAME=all python ingest/extract_wiki.py   -> both
+GAME = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("GAME", "hollow_knight")).lower()
 
 
 def api(**params):
@@ -48,13 +57,22 @@ def all_titles():
             return titles
 
 
-def is_hollow_knight(title, categories):
+def page_game(title, categories):
+    """Which game a page belongs to, from its categories — or None if ambiguous/neither."""
     cats = [c.replace("_", " ").lower() for c in categories]
     if any("disambiguation" in c for c in cats):
-        return False
-    if "(silksong)" in title.lower() or any("(silksong)" in c for c in cats):
-        return False
-    return any("(hollow knight)" in c or c == "hollow knight" for c in cats)
+        return None
+    hk = any("(hollow knight)" in c or c == "hollow knight" for c in cats)
+    ss = any("(silksong)" in c or c == "silksong" for c in cats) or "(silksong)" in title.lower()
+    if hk and not ss:
+        return "hollow_knight"
+    if ss and not hk:
+        return "silksong"
+    return None
+
+
+def wanted(game):
+    return game is not None and (GAME == "all" or game == GAME)
 
 
 def fetch(title):
@@ -81,7 +99,7 @@ def main():
     seen = set(json.loads(LEDGER.read_text())) if LEDGER.exists() else set()
     titles = all_titles()
     kept = sum(1 for t in titles if (OUT / f"{slug(t)}.json").exists())
-    print(f"{len(titles)} non-redirect pages; {kept} HK pages already cached")
+    print(f"{len(titles)} non-redirect pages; keeping game={GAME}; {kept} already cached")
 
     for i, title in enumerate(titles):
         if title in seen or (OUT / f"{slug(title)}.json").exists():
@@ -92,17 +110,19 @@ def main():
             print(f"FAIL {title}: {e}")
             continue
         seen.add(title)
-        if rec and is_hollow_knight(rec["title"], rec["categories"]):
+        game = page_game(rec["title"], rec["categories"]) if rec else None
+        if rec and wanted(game):
+            rec["game"] = game
             (OUT / f"{slug(rec['title'])}.json").write_text(
                 json.dumps(rec, indent=2, ensure_ascii=False))
             kept += 1
         if i % 25 == 0:
             LEDGER.write_text(json.dumps(sorted(seen)))
-            print(f"  {i}/{len(titles)} processed | {kept} HK pages kept")
+            print(f"  {i}/{len(titles)} processed | {kept} pages kept")
         time.sleep(DELAY_S)
 
     LEDGER.write_text(json.dumps(sorted(seen)))
-    print(f"done: {kept} Hollow Knight pages in {OUT}")
+    print(f"done: kept {kept} {GAME} pages in {OUT}")
 
 
 if __name__ == "__main__":
