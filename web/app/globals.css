@@ -1,0 +1,27 @@
+html, body { margin: 0; padding: 0; height: 100%; background: #04070d; overflow: hidden; }
+*, *::before, *::after { box-sizing: border-box; }
+::selection { background: rgba(140, 190, 255, .25); }
+input::placeholder { color: inherit; opacity: .45; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(160, 190, 230, .18); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(160, 190, 230, .32); }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes beamSway1 { 0%, 100% { opacity: .55; transform: translateX(-50%) rotate(-7deg); } 50% { opacity: .9; transform: translateX(-50%) rotate(-5deg); } }
+@keyframes beamSway2 { 0%, 100% { opacity: .85; transform: translateX(-50%) rotate(0deg); } 50% { opacity: .5; transform: translateX(-50%) rotate(1.5deg); } }
+@keyframes beamSway3 { 0%, 100% { opacity: .4; transform: translateX(-50%) rotate(8deg); } 50% { opacity: .75; transform: translateX(-50%) rotate(6deg); } }
+@keyframes dotPulse { 0%, 80%, 100% { opacity: .2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@keyframes sendGlow { 0% { box-shadow: 0 0 0 0 rgba(180, 220, 255, .7); } 100% { box-shadow: 0 0 24px 14px rgba(180, 220, 255, 0); } }
+@keyframes titleGlow { 0%, 100% { text-shadow: 0 0 18px rgba(170, 215, 255, .35), 0 0 2px rgba(255, 255, 255, .4); } 50% { text-shadow: 0 0 30px rgba(170, 215, 255, .6), 0 0 2px rgba(255, 255, 255, .55); } }
+
+/* Interactive states. Colors come from CSS vars set per-theme on the app root,
+   so hover/focus glow follows the current game (Hallownest blue / Pharloom gold). */
+.cc-hover { transition: all 400ms ease; }
+.cc-hover:hover { color: var(--accent); border-color: var(--glow); box-shadow: 0 0 10px var(--glow-soft); }
+.cc-row:hover { background: var(--row-hover); }
+.cc-focus:focus { border-color: var(--glow); box-shadow: 0 0 12px var(--glow-soft); outline: none; }
+.cc-chip:hover { border-color: var(--glow); color: var(--accent); box-shadow: 0 0 14px var(--glow-soft); }
+.cc-send:hover { border-color: var(--glow); box-shadow: 0 0 20px var(--glow-soft); }
+.cc-settings:hover { color: var(--accent); border-color: var(--glow); box-shadow: 0 0 14px var(--glow-soft); }
