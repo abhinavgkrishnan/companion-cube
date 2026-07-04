@@ -182,7 +182,7 @@ export default function CompanionCube() {
     if (el) { el.style.animation = "none"; requestAnimationFrame(() => { if (sendBtnRef.current) sendBtnRef.current.style.animation = "sendGlow .9s ease-out"; }); }
     postQuery({ question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game] })
       .then((res) => stream(id + 1, res))
-      .catch(() => stream(id + 1, { answer: "*The link to the archives is broken.*\n\nIs the backend running? Start it with `uvicorn api.main:app --port 8000` from the repo root.", citations: [] }));
+      .catch(() => stream(id + 1, { answer: "*The link to the archives is broken.*\n\nIs the backend running? Start it with `python -m uvicorn api.main:app --port 8000` from the repo root.", citations: [] }));
   }, [game, mode, tolerance, checked, stream]);
 
   // ─── derived view values ───

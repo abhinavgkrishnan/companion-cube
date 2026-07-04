@@ -1,7 +1,8 @@
 """FastAPI bridge exposing the gated retrieval + generation to the web UI.
 
-Run from the repo root:  uvicorn api.main:app --port 8000
-(needs ANTHROPIC_API_KEY via .env, same as the tagging step.)
+Run from the repo root:  python -m uvicorn api.main:app --port 8000
+(the `python -m` form puts the repo root on the import path so `api.main` resolves;
+needs ANTHROPIC_API_KEY via .env, same as the tagging step.)
 
 - GET  /api/beats?game=hollow_knight  -> the player-checkable progression, grouped
 - POST /api/query                      -> a gated, cited answer over the real wiki
