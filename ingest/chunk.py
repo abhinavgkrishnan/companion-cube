@@ -8,12 +8,16 @@ Run:  python ingest/chunk.py
 """
 
 import json
+import os
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
-CLEAN = Path(__file__).resolve().parent.parent / "data" / "clean"
-OUT = Path(__file__).resolve().parent.parent / "data" / "chunks.json"
+GAME = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("GAME", "hollow_knight")).lower()
+DATA = Path(__file__).resolve().parent.parent / "data" / GAME
+CLEAN = DATA / "clean"
+OUT = DATA / "chunks.json"
 
 MAX_CHARS = 1200
 OVERLAP_CHARS = 150

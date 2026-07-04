@@ -24,8 +24,6 @@ from pathlib import Path
 API = "https://hollowknight.wiki/mw/api.php"
 PAGE_BASE = "https://hollowknight.wiki/w/"
 UA = "companion-cube/0.1 (portfolio RAG project; github.com/abhinavgkrishnan)"
-OUT = Path(__file__).resolve().parent.parent / "data" / "raw"
-LEDGER = OUT / ".seen.json"
 DELAY_S = 0.3
 
 # which game's pages to keep — set via first CLI arg or the GAME env var
@@ -33,6 +31,10 @@ DELAY_S = 0.3
 #   python ingest/extract_wiki.py silksong   -> silksong
 #   GAME=all python ingest/extract_wiki.py   -> both
 GAME = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("GAME", "hollow_knight")).lower()
+
+# data is namespaced per game so multiple games never collide
+OUT = Path(__file__).resolve().parent.parent / "data" / GAME / "raw"
+LEDGER = OUT / ".seen.json"
 
 
 def api(**params):

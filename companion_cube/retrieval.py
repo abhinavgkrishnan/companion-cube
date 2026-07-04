@@ -20,10 +20,9 @@ from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 from .models import PlayerState, SpoilerTolerance
 
 ROOT = Path(__file__).resolve().parent.parent
-QDRANT_PATH = ROOT / "data" / "qdrant"
-BEATS = ROOT / "data" / "beats.json"
-COLLECTION = "hollow_knight"
+QDRANT_PATH = ROOT / "data" / "qdrant"          # shared store, one collection per game
 MODEL = "BAAI/bge-small-en-v1.5"
+DEFAULT_GAME = "hollow_knight"
 
 _embedder = None
 _client = None
@@ -39,12 +38,12 @@ def _resources():
     return _embedder, _client
 
 
-def _all_beats():
-    return set(json.loads(BEATS.read_text()).keys())
+def _beats(game):
+    return set(json.loads((ROOT / "data" / game / "beats.json").read_text()).keys())
 
 
-def gate_filter(player: PlayerState, tolerance: SpoilerTolerance) -> Filter:
-    uncompleted = sorted(_all_beats() - player.completed_beats)
+def gate_filter(player: PlayerState, tolerance: SpoilerTolerance, game: str) -> Filter:
+    uncompleted = sorted(_beats(game) - player.completed_beats)
 
     # reveals only reached beats  ==  reveals none of the uncompleted beats
     reveals_nothing_unseen = (
@@ -61,14 +60,15 @@ def gate_filter(player: PlayerState, tolerance: SpoilerTolerance) -> Filter:
     return Filter(should=should)
 
 
-def retrieve(query, player: PlayerState, tolerance: SpoilerTolerance = SpoilerTolerance.NONE, k=5):
-    """Return up to k gate-allowed chunk payloads, nearest first."""
+def retrieve(query, player: PlayerState, tolerance: SpoilerTolerance = SpoilerTolerance.NONE,
+             game: str = DEFAULT_GAME, k=5):
+    """Return up to k gate-allowed chunk payloads for the given game, nearest first."""
     embedder, client = _resources()
     qvec = list(embedder.embed([query]))[0].tolist()
     res = client.query_points(
-        collection_name=COLLECTION,
+        collection_name=game,
         query=qvec,
-        query_filter=gate_filter(player, tolerance),
+        query_filter=gate_filter(player, tolerance, game),
         limit=k,
         with_payload=True,
     )

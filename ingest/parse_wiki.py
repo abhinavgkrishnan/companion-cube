@@ -11,11 +11,15 @@ Run:  python ingest/parse_wiki.py
 """
 
 import json
+import os
 import re
+import sys
 from pathlib import Path
 
-RAW = Path(__file__).resolve().parent.parent / "data" / "raw"
-CLEAN = Path(__file__).resolve().parent.parent / "data" / "clean"
+GAME = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("GAME", "hollow_knight")).lower()
+DATA = Path(__file__).resolve().parent.parent / "data" / GAME
+RAW = DATA / "raw"
+CLEAN = DATA / "clean"
 
 DROP_SECTIONS = {"names in other languages", "references", "gallery", "see also", "notes"}
 CATEGORY_NOISE = re.compile(r"pages_with_missing|disambiguation", re.I)

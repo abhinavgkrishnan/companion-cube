@@ -11,6 +11,8 @@ Run:  python ingest/embed.py
 """
 
 import json
+import os
+import sys
 from pathlib import Path
 
 from fastembed import TextEmbedding
@@ -18,9 +20,10 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
 ROOT = Path(__file__).resolve().parent.parent
-CHUNKS = ROOT / "data" / "chunks_tagged.json"
-QDRANT_PATH = ROOT / "data" / "qdrant"
-COLLECTION = "hollow_knight"
+GAME = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("GAME", "hollow_knight")).lower()
+CHUNKS = ROOT / "data" / GAME / "chunks_tagged.json"
+QDRANT_PATH = ROOT / "data" / "qdrant"             # shared store, one collection per game
+COLLECTION = GAME
 MODEL = "BAAI/bge-small-en-v1.5"   # 384-dim, small, runs offline
 DIM = 384
 
@@ -33,7 +36,7 @@ def main():
     chunks = json.loads(CHUNKS.read_text())
 
     embedder = TextEmbedding(MODEL)
-    vectors = list(embedder.embed([embed_text(c) for c in chunks]))
+    vectors = list(embedder.embed([embed_text(c) for c in chunks], batch_size=64, parallel=0))
 
     client = QdrantClient(path=str(QDRANT_PATH))
     if client.collection_exists(COLLECTION):

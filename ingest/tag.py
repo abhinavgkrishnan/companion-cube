@@ -16,6 +16,7 @@ Run:  python ingest/tag.py     (needs ANTHROPIC_API_KEY, via env or .env)
 
 import json
 import os
+import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -23,11 +24,13 @@ from pathlib import Path
 import anthropic
 
 ROOT = Path(__file__).resolve().parent.parent
-CLEAN = ROOT / "data" / "clean"
-CHUNKS = ROOT / "data" / "chunks.json"
-TAGS = ROOT / "data" / "tags"
-OUT = ROOT / "data" / "chunks_tagged.json"
-BEATS = ROOT / "data" / "beats.json"
+GAME = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("GAME", "hollow_knight")).lower()
+DATA = ROOT / "data" / GAME
+CLEAN = DATA / "clean"
+CHUNKS = DATA / "chunks.json"
+TAGS = DATA / "tags"
+OUT = DATA / "chunks_tagged.json"
+BEATS = DATA / "beats.json"
 MODEL = "claude-sonnet-4-6"
 
 

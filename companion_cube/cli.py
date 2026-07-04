@@ -4,14 +4,17 @@
 """
 
 import json
+import os
+import sys
 from pathlib import Path
 
 from .generate import generate
 from .models import Mode, PlayerState, SpoilerTolerance
 from .retrieval import retrieve
 
+GAME = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("GAME", "hollow_knight")).lower()
 ROOT = Path(__file__).resolve().parent.parent
-BEATS = ROOT / "data" / "beats.json"
+BEATS = ROOT / "data" / GAME / "beats.json"
 
 
 def _scenario(title, query, player, mode, tolerance=SpoilerTolerance.NONE):
@@ -19,7 +22,7 @@ def _scenario(title, query, player, mode, tolerance=SpoilerTolerance.NONE):
     print(f"SCENARIO: {title}")
     print(f"  completed_beats={len(player.completed_beats)}  mode={mode.value}  tolerance={tolerance.value}")
     print(f"  Q: {query}")
-    hits = retrieve(query, player, tolerance, k=4)
+    hits = retrieve(query, player, tolerance, game=GAME, k=4)
     print(f"  retrieved: {[h['chunk_id'] for h in hits] or 'none (all gated)'}")
     print("  --- answer ---")
     print("  " + generate(query, hits, mode).replace("\n", "\n  "))
