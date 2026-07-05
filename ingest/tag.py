@@ -54,7 +54,7 @@ def beat_type(categories):
         return "boss"
     if "area" in c:
         return "area"
-    if "spells and abilities" in c:
+    if "abilities" in c:                 # "Spells and Abilities" (HK) / "Skills and Abilities" (Silksong)
         return "ability"
     return "event"
 
