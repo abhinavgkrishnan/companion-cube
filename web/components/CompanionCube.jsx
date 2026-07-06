@@ -83,6 +83,7 @@ export default function CompanionCube() {
   const [game, setGame] = useState("hk");
   const [beats, setBeats] = useState(EMPTY_BEATS);
   const [collapsed, setCollapsed] = useState(false);
+  const [openGroups, setOpenGroups] = useState({ areas: true, bosses: true, abilities: true });
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState("hold_my_hand");
   const [tolerance, setTolerance] = useState("none");
@@ -203,7 +204,7 @@ export default function CompanionCube() {
     setChecked((st) => ({ ...st, [game]: ids }));
   };
 
-  const groups = [["Abilities", "abilities"], ["Areas", "areas"], ["Bosses", "bosses"]].map(([name, key]) => {
+  const groups = [["Areas", "areas"], ["Bosses", "bosses"], ["Abilities", "abilities"]].map(([name, key]) => {
     const list = beats[key] || [];
     const items = list.filter((it) => !q || it.title.toLowerCase().includes(q));
     const doneN = list.filter((it) => done.includes(it.id)).length;
@@ -332,14 +333,18 @@ export default function CompanionCube() {
                     {game === "ss" ? "Pharloom is still being charted…" : "Loading the map of Hallownest…"}
                   </div>
                 )}
-                {groups.map((g) => (
+                {groups.map((g) => {
+                  const open = openGroups[g.key];
+                  return (
                   <div key={g.key} style={{ marginTop: 14 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 6px" }}>
+                    <button onClick={() => setOpenGroups((s) => ({ ...s, [g.key]: !s[g.key] }))}
+                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "0 8px 6px", border: "none", background: "transparent", cursor: "pointer" }}>
+                      <span style={{ fontSize: 9, color: t.textDim, transform: open ? "rotate(90deg)" : "none", transition: "transform 300ms ease" }}>▶</span>
                       <span style={{ fontFamily: cin, fontSize: 11, fontWeight: 600, letterSpacing: ".24em", textTransform: "uppercase", color: t.textDim }}>{g.name}</span>
                       <span style={{ flex: 1, height: 1, background: t.border }} />
                       <span style={{ fontSize: 12, color: t.textDim }}>{g.count}</span>
-                    </div>
-                    {g.items.map((it) => {
+                    </button>
+                    {open && g.items.map((it) => {
                       const on = done.includes(it.id);
                       return (
                         <button key={it.id} className="cc-row" onClick={() => toggleItem(it.id)}
@@ -350,7 +355,8 @@ export default function CompanionCube() {
                       );
                     })}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </aside>

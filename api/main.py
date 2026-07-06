@@ -62,7 +62,7 @@ ORDER = {
     },
 }
 
-JUNK_DOCS = EXCLUDE | {"gallery", "controls", "trivia", "completion"}   # meta pages to keep out of retrieval
+JUNK_DOCS = EXCLUDE | {"gallery", "controls", "completion"}   # meta pages to keep out of retrieval
 
 app = FastAPI(title="CompanionCube API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
