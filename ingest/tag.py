@@ -25,6 +25,7 @@ import anthropic
 
 ROOT = Path(__file__).resolve().parent.parent
 GAME = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("GAME", "hollow_knight")).lower()
+GAME_NAME = {"hollow_knight": "Hollow Knight", "silksong": "Hollow Knight: Silksong"}.get(GAME, GAME)
 DATA = ROOT / "data" / GAME
 CLEAN = DATA / "clean"
 CHUNKS = DATA / "chunks.json"
@@ -91,23 +92,42 @@ TAG_TOOL = {
     },
 }
 
-INSTRUCTIONS = """You are tagging chunks of a Hollow Knight wiki for a spoiler-aware guide.
+INSTRUCTIONS = """You are tagging chunks of a {game} wiki for a spoiler-aware, progress-gated guide. A
+player marks the areas they have reached, the abilities they hold, and the bosses they have beaten; the
+guide must never reveal a beat the player has not reached yet, while still helping freely with whatever
+they can already access.
 
 Beat taxonomy (canonical progression milestones — use these exact ids in reveals_beats):
 {taxonomy}
 
-spoiler_level:
-- mechanics: ONLY universal, game-wide systems safe at ANY point (how SOUL, healing, or the nail work in general). A mechanics chunk reveals NO specific ability, boss, or area. Anything about a SPECIFIC ability/boss/area — including its combat tactics or charm interactions — is NOT mechanics.
-- light: reveals a specific ability, area, or mini-boss.
-- major_plot: reveals story beats, endings, or major/final bosses.
+For each chunk, decide reveals_beats, spoiler_level, and region.
 
-For each chunk, decide:
-- reveals_beats: which beat ids the chunk discloses. Include the chunk's own subject if it reveals that
-  ability/boss/area exists or how to obtain/beat/reach it, PLUS any other beats it cross-references.
-- spoiler_level: per the definitions above. A chunk with any reveals_beats must NOT be mechanics.
-- region: the in-game area it concerns, or "" if none."""
+reveals_beats — the beats this chunk would SPOIL for a player who has not reached them:
+- Always include the chunk's own subject (the ability/boss/area the page is about) when the chunk shows
+  that it exists or how to obtain, beat, or reach it.
+- Include another beat ONLY if the chunk substantively spoils it — its plot role, a hidden or later
+  location, or how to get/beat it.
+- Do NOT include beats merely name-dropped: a neighbouring area, a passing mention, a prerequisite the
+  player would already hold, or an entity noted in trivia. Keep the list tight.
+
+spoiler_level:
+- mechanics: ONLY universal, game-wide systems safe at ANY point (how healing, the core resource, or
+  basic combat work in general). Reveals NO specific ability, boss, or area. A chunk with any
+  reveals_beats is never mechanics.
+- light: the ordinary substance of a walkthrough — a specific ability, area, or boss and how to
+  get/beat/reach it. This is the DEFAULT for progression content, including tough or optional bosses.
+- major_plot: RESERVE for true narrative spoilers only — the game's endings, its final and secret/true
+  final bosses, and the central story reveals (the world's affliction, a character's true identity or
+  fate). An ordinary progression boss is light, never major_plot.
+
+region — the beat id (from the taxonomy above) of the area a player reaches to encounter this content:
+- An area page: its own area id. A boss: the id of the area it is fought in. An ability, charm, or item:
+  the id of the area where it is found or acquired (use the infobox acquisition/location when given).
+- Use "" only for genuinely game-wide content with no single area (universal mechanics, or collectibles
+  scattered across the whole world)."""
 
 USER = """Document: {title}  (type: {dtype}; categories: {cats})
+Infobox: {infobox}
 
 Chunks:
 {chunks}"""
@@ -117,7 +137,8 @@ def tag_doc(client, doc, chunks, system_blocks):
     chunks_str = "\n\n".join(f"[{c['id']}] (section: {c['section']})\n{c['text']}" for c in chunks)
     user = USER.format(
         title=doc["title"], dtype=beat_type(doc["categories"]),
-        cats=", ".join(doc["categories"]), chunks=chunks_str,
+        cats=", ".join(doc["categories"]), infobox=json.dumps(doc.get("infobox", {}), ensure_ascii=False)[:500],
+        chunks=chunks_str,
     )
     resp = client.messages.create(
         model=MODEL, max_tokens=4000,
@@ -140,7 +161,7 @@ def main():
     tax_str = "\n".join(f"- {bid} ({b['type']}): {b['title']}" for bid, b in taxonomy.items())
     system_blocks = [{
         "type": "text",
-        "text": INSTRUCTIONS.format(taxonomy=tax_str),
+        "text": INSTRUCTIONS.format(game=GAME_NAME, taxonomy=tax_str),
         "cache_control": {"type": "ephemeral"},                # cache taxonomy + instructions (+ tools)
     }]
 

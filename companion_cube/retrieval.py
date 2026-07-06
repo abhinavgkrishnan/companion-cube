@@ -12,7 +12,6 @@ reached beats" becomes "reveals none of the uncompleted beats" (must_not · matc
 
 import atexit
 import json
-import re
 from pathlib import Path
 from typing import cast
 
@@ -52,8 +51,6 @@ def _resources():
     return _dense, _sparse, _reranker, _client
 
 
-_SUFFIX = re.compile(r"\s*\((?:Hollow Knight|Silksong)\)$")
-
 # true story/ending beats that stay hidden until earned, no matter where the player has reached
 PROTECTED = {
     "hollow_knight": {
@@ -74,11 +71,8 @@ def gate_filter(player: PlayerState, tolerance: SpoilerTolerance, game: str) -> 
     tax = _taxonomy(game)
     completed = player.completed_beats
     uncompleted = sorted(set(tax) - completed)
-    # areas the player has reached -> the region names their content is tagged with
-    reached_regions = sorted({
-        _SUFFIX.sub("", tax[b]["title"]) for b in completed
-        if b in tax and tax[b].get("type") == "area"
-    })
+    # areas the player has reached; chunks are tagged with the beat id of their area
+    reached_regions = sorted(b for b in completed if b in tax and tax[b].get("type") == "area")
     protected_unseen = sorted(PROTECTED.get(game, set()) - completed)
 
     should = [

@@ -29,6 +29,7 @@ COLLECTION = GAME
 DENSE_MODEL = "BAAI/bge-small-en-v1.5"   # 384-dim dense, runs offline
 SPARSE_MODEL = "Qdrant/bm25"             # lexical sparse for exact boss/item names; IDF at query time
 DIM = 384
+BATCH = 256
 
 
 def embed_text(c):
@@ -38,9 +39,8 @@ def embed_text(c):
 def main():
     chunks = json.loads(CHUNKS.read_text())
     texts = [embed_text(c) for c in chunks]
-
-    dense = list(TextEmbedding(DENSE_MODEL).embed(texts, batch_size=64, parallel=0))
-    sparse = list(SparseTextEmbedding(SPARSE_MODEL).embed(texts, batch_size=64, parallel=0))
+    dense_model = TextEmbedding(DENSE_MODEL)
+    sparse_model = SparseTextEmbedding(SPARSE_MODEL)
 
     client = QdrantClient(path=str(QDRANT_PATH))
     if client.collection_exists(COLLECTION):
@@ -51,30 +51,32 @@ def main():
         sparse_vectors_config={"bm25": SparseVectorParams(modifier=Modifier.IDF)},
     )
 
-    points = [
-        PointStruct(
-            id=i,
-            vector={
-                "dense": cast("list[float]", dv.tolist()),
-                "bm25": SparseVector(indices=cast("list[int]", sv.indices.tolist()),
-                                     values=cast("list[float]", sv.values.tolist())),
-            },
-            payload={
-                "chunk_id": c["id"],
-                "doc_title": c["doc_title"],
-                "url": c["url"],
-                "section": c["section"],
-                "text": c["text"],
-                "reveals_beats": c["reveals_beats"],
-                "spoiler_level": c["spoiler_level"],
-                "region": c["region"],
-            },
-        )
-        for i, (c, dv, sv) in enumerate(zip(chunks, dense, sparse))
-    ]
-    client.upsert(COLLECTION, points)
+    # embed + upsert in batches: bounded memory, and progress survives if the run is interrupted
+    done = 0
+    for start in range(0, len(chunks), BATCH):
+        batch, btexts = chunks[start:start + BATCH], texts[start:start + BATCH]
+        dvs = list(dense_model.embed(btexts, batch_size=64, parallel=0))
+        svs = list(sparse_model.embed(btexts, batch_size=64, parallel=0))
+        client.upsert(COLLECTION, [
+            PointStruct(
+                id=start + j,
+                vector={
+                    "dense": cast("list[float]", dv.tolist()),
+                    "bm25": SparseVector(indices=cast("list[int]", sv.indices.tolist()),
+                                         values=cast("list[float]", sv.values.tolist())),
+                },
+                payload={
+                    "chunk_id": c["id"], "doc_title": c["doc_title"], "url": c["url"],
+                    "section": c["section"], "text": c["text"], "reveals_beats": c["reveals_beats"],
+                    "spoiler_level": c["spoiler_level"], "region": c["region"],
+                },
+            )
+            for j, (c, dv, sv) in enumerate(zip(batch, dvs, svs))
+        ])
+        done += len(batch)
+        print(f"  embedded {done}/{len(chunks)}", flush=True)
 
-    print(f"upserted {len(points)} chunks (dense + bm25) into '{COLLECTION}' at {QDRANT_PATH}")
+    print(f"upserted {done} chunks (dense + bm25) into '{COLLECTION}' at {QDRANT_PATH}")
     print("collection count:", client.count(COLLECTION).count)
 
 
