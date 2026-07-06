@@ -1,4 +1,5 @@
-"""Semantic retrieval over Qdrant with the spoiler gate enforced as a payload filter.
+"""Hybrid retrieval over Qdrant (dense + BM25, RRF-fused) with a cross-encoder rerank, and the spoiler
+gate enforced as a payload filter on both arms.
 
 The gate runs INSIDE the query: Qdrant excludes any chunk that reveals a beat the player hasn't
 reached, so a spoiler can't come back even as the closest match. Mechanics chunks are always allowed;
@@ -15,29 +16,40 @@ import re
 from pathlib import Path
 from typing import cast
 
-from fastembed import TextEmbedding
+from fastembed import SparseTextEmbedding, TextEmbedding
+from fastembed.rerank.cross_encoder import TextCrossEncoder
 from qdrant_client import QdrantClient
-from qdrant_client.models import Condition, FieldCondition, Filter, MatchAny, MatchValue
+from qdrant_client.models import (
+    Condition, FieldCondition, Filter, Fusion, FusionQuery, MatchAny, MatchValue, Prefetch, SparseVector,
+)
 
 from .models import PlayerState, SpoilerTolerance
 
 ROOT = Path(__file__).resolve().parent.parent
 QDRANT_PATH = ROOT / "data" / "qdrant"          # shared store, one collection per game
-MODEL = "BAAI/bge-small-en-v1.5"
+DENSE_MODEL = "BAAI/bge-small-en-v1.5"
+SPARSE_MODEL = "Qdrant/bm25"
+RERANK_MODEL = "Xenova/ms-marco-MiniLM-L-12-v2"
 DEFAULT_GAME = "hollow_knight"
 
-_embedder = None
+_dense = None
+_sparse = None
+_reranker = None
 _client = None
 
 
 def _resources():
-    global _embedder, _client
-    if _embedder is None:
-        _embedder = TextEmbedding(MODEL)
+    global _dense, _sparse, _reranker, _client
+    if _dense is None:
+        _dense = TextEmbedding(DENSE_MODEL)
+    if _sparse is None:
+        _sparse = SparseTextEmbedding(SPARSE_MODEL)
+    if _reranker is None:
+        _reranker = TextCrossEncoder(RERANK_MODEL)
     if _client is None:
         _client = QdrantClient(path=str(QDRANT_PATH))
         atexit.register(_client.close)   # close before interpreter teardown, not in __del__
-    return _embedder, _client
+    return _dense, _sparse, _reranker, _client
 
 
 _SUFFIX = re.compile(r"\s*\((?:Hollow Knight|Silksong)\)$")
@@ -99,14 +111,31 @@ def gate_filter(player: PlayerState, tolerance: SpoilerTolerance, game: str) -> 
 
 def retrieve(query, player: PlayerState, tolerance: SpoilerTolerance = SpoilerTolerance.NONE,
              game: str = DEFAULT_GAME, k=5) -> list[dict]:
-    """Return up to k gate-allowed chunk payloads for the given game, nearest first."""
-    embedder, client = _resources()
-    qvec = cast("list[float]", list(embedder.embed([query]))[0].tolist())
+    """Return up to k gate-allowed payloads: dense + BM25 fused (RRF), then cross-encoder reranked."""
+    dense, sparse, reranker, client = _resources()
+    gate = gate_filter(player, tolerance, game)
+    dvec = cast("list[float]", list(dense.embed([query]))[0].tolist())
+    svec = list(sparse.embed([query]))[0]
+    fetch = max(4 * k, 20)
+
     res = client.query_points(
         collection_name=game,
-        query=qvec,
-        query_filter=gate_filter(player, tolerance, game),
-        limit=k,
+        prefetch=[
+            Prefetch(query=dvec, using="dense", filter=gate, limit=fetch),
+            Prefetch(query=SparseVector(indices=cast("list[int]", svec.indices.tolist()),
+                                        values=cast("list[float]", svec.values.tolist())),
+                     using="bm25", filter=gate, limit=fetch),
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
+        limit=fetch,
         with_payload=True,
     )
-    return [pt.payload or {} for pt in res.points]
+    payloads = [pt.payload or {} for pt in res.points]
+    if not payloads:
+        return []
+
+    # cross-encoder rerank the fused candidates, keep the top k
+    docs = [f"{p.get('doc_title', '')} — {p.get('section', '')}\n{p.get('text', '')}" for p in payloads]
+    scores = list(reranker.rerank(query, docs))
+    ranked = [p for _, p in sorted(zip(scores, payloads), key=lambda z: z[0], reverse=True)]
+    return ranked[:k]
