@@ -48,6 +48,9 @@ PROTECTED = {
         "the_radiance", "absolute_radiance", "void_heart", "the_hollow_knight",
         "pure_vessel", "endings_(hollow_knight)",
     },
+    "silksong": {
+        "grand_mother_silk", "lost_lace", "the_unravelled", "endings_(silksong)",
+    },
 }
 
 

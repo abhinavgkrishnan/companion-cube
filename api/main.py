@@ -51,6 +51,15 @@ ORDER = {
                    "Broken Vessel", "Nosk", "Watcher Knights", "Uumuu", "Hornet Sentinel", "Traitor Lord",
                    "The Collector", "The Hollow Knight", "The Radiance"],
     },
+    "silksong": {
+        # approximate Act 1 -> 3 progression; unlisted areas fall to the alphabetical tail
+        "areas": ["Moss Grotto", "The Marrow", "Deep Docks", "Wormways", "Far Fields", "Greymoor",
+                  "Mosslands", "Shellwood", "Bellhart", "Bone Bottom", "Blasted Steps", "Sinner's Road",
+                  "Bilewater", "Hunter's March", "The Citadel", "Underworks", "Cogwork Core",
+                  "Choral Chambers", "Whispering Vaults", "High Halls", "Grand Gate", "Whiteward",
+                  "Memorium", "Putrified Ducts", "Sands of Karak", "The Abyss", "The Cradle", "Mount Fay",
+                  "Verdania", "The Mist", "The Slab", "Red Memory", "Weavenest Atla", "Wisp Thicket"],
+    },
 }
 
 JUNK_DOCS = EXCLUDE | {"gallery", "controls", "trivia", "completion"}   # meta pages to keep out of retrieval
