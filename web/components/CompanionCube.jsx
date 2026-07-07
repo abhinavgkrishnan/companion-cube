@@ -105,6 +105,7 @@ export default function CompanionCube() {
   const bgWrapRef = useRef(null);
   const transcriptRef = useRef(null);
   const sendBtnRef = useRef(null);
+  const settingsRef = useRef(null);
   const partsRef = useRef([]);
   const mixRef = useRef(0);
   const mouseRef = useRef({ x: 0, y: 0 });
@@ -198,6 +199,14 @@ export default function CompanionCube() {
   }, []);
 
   useEffect(() => { if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight; }, [messages]);
+
+  // Close the settings menu on any click outside it.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onDown = (e) => { if (settingsRef.current && !settingsRef.current.contains(e.target)) setSettingsOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [settingsOpen]);
 
   // Word-by-word reveal of the answer the backend returns (light, purely cosmetic).
   const stream = useCallback((msgId, res) => {
@@ -342,14 +351,13 @@ export default function CompanionCube() {
             </div>
           </div>
 
-          <div style={{ minWidth: 280, display: "flex", justifyContent: "flex-end", position: "relative" }}>
+          <div ref={settingsRef} style={{ minWidth: 280, display: "flex", justifyContent: "flex-end", position: "relative" }}>
             <button className="cc-settings" onClick={() => setSettingsOpen((v) => !v)} title={user ? displayName : "Settings"}
               style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${user ? t.glowDim : t.border}`, background: "transparent", color: t.accent, fontFamily: gar, fontSize: user ? 13 : 16, cursor: "pointer", transition: "all 500ms ease", overflow: "hidden", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {user && avatarUrl && !avatarError
                 ? <img src={avatarUrl} alt="" referrerPolicy="no-referrer" width={38} height={38} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={() => setAvatarError(true)} />
                 : user ? <span>{initials || "★"}</span> : <span style={{ color: t.textDim }}>✦</span>}
             </button>
-            {settingsOpen && <div onClick={() => setSettingsOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 39 }} />}
             {settingsOpen && (
               <div style={{ position: "absolute", top: 46, right: 0, zIndex: 40, width: 230, padding: "16px 18px", border: `1px solid ${t.border}`, borderRadius: 10, background: t.popBg, boxShadow: "0 12px 40px rgba(0,0,0,.55)", animation: "fadeUp .3s ease both" }}>
                 <div style={{ fontFamily: cin, fontSize: 11, letterSpacing: ".22em", textTransform: "uppercase", color: t.textDim, marginBottom: 12 }}>Settings</div>
