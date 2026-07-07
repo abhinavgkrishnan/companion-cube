@@ -98,6 +98,8 @@ export default function CompanionCube() {
   const [reduceMotion, setReduceMotion] = useState(false);
   const [session, setSession] = useState(authEnabled ? undefined : null);   // undefined=resolving, null=signed out
   const [convoId, setConvoId] = useState(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
 
   const canvasRef = useRef(null);
   const bgWrapRef = useRef(null);
@@ -130,6 +132,14 @@ export default function CompanionCube() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Offer sign-in to a fresh visitor; skip if they've chosen to browse as a guest before.
+  useEffect(() => {
+    if (session?.user) { setAuthModalOpen(false); setAvatarError(false); return; }
+    if (authEnabled && session === null && typeof window !== "undefined" && !localStorage.getItem("cc-guest")) {
+      setAuthModalOpen(true);
+    }
+  }, [session]);
 
   // Load this game's saved progress + conversation whenever the game or sign-in changes.
   useEffect(() => {
@@ -288,26 +298,11 @@ export default function CompanionCube() {
   const gar = "'EB Garamond', serif";
   const icon = game === "hk" ? "/assets/icon-hk.png" : "/assets/icon-ss.png";
 
-  if (authEnabled && session === undefined) {
-    return <div style={{ position: "fixed", inset: 0, background: "#04090f" }} />;
-  }
-  if (authEnabled && session === null) {
-    return (
-      <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: gar, color: t.text, background: "radial-gradient(120% 90% at 50% -10%, #10263f 0%, #081527 34%, #04090f 68%, #02050a 100%)" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, textAlign: "center", padding: 40, maxWidth: 400 }}>
-          <img src="/assets/icon-hk.png" width={72} height={72} alt="" style={{ filter: "drop-shadow(0 0 16px rgba(140,195,255,.3))" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
-          <div style={{ fontFamily: cin, fontSize: 24, fontWeight: 500, letterSpacing: ".26em", textTransform: "uppercase" }}>CompanionCube</div>
-          <div style={{ fontSize: 16.5, lineHeight: 1.6, color: t.textDim, fontStyle: "italic" }}>
-            A spoiler-aware guide to Hallownest and Pharloom. Sign in to carry your progress across your devices.
-          </div>
-          <button className="cc-hover" onClick={() => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: typeof window !== "undefined" ? window.location.origin : undefined } })}
-            style={{ marginTop: 4, fontFamily: gar, fontSize: 16, padding: "12px 28px", borderRadius: 10, cursor: "pointer", border: `1px solid ${t.glowDim}`, background: t.chipBg, color: t.accent }}>
-            Continue with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const user = session?.user;
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || "";
+  const initials = displayName.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const signInGoogle = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: typeof window !== "undefined" ? window.location.origin : undefined } });
 
   return (
     <div style={{ position: "fixed", inset: 0, overflow: "hidden", fontFamily: gar, color: t.text, transition: "color 1200ms ease", ...rootVars }}>
@@ -350,8 +345,12 @@ export default function CompanionCube() {
           </div>
 
           <div style={{ minWidth: 280, display: "flex", justifyContent: "flex-end", position: "relative" }}>
-            <button className="cc-settings" onClick={() => setSettingsOpen((v) => !v)} title="Settings"
-              style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${t.border}`, background: "transparent", color: t.textDim, fontSize: 16, cursor: "pointer", transition: "all 500ms ease" }}>✦</button>
+            <button className="cc-settings" onClick={() => setSettingsOpen((v) => !v)} title={user ? displayName : "Settings"}
+              style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${user ? t.glowDim : t.border}`, background: "transparent", color: t.accent, fontFamily: gar, fontSize: user ? 13 : 16, cursor: "pointer", transition: "all 500ms ease", overflow: "hidden", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {user && avatarUrl && !avatarError
+                ? <img src={avatarUrl} alt="" referrerPolicy="no-referrer" width={38} height={38} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={() => setAvatarError(true)} />
+                : user ? <span>{initials || "★"}</span> : <span style={{ color: t.textDim }}>✦</span>}
+            </button>
             {settingsOpen && (
               <div style={{ position: "absolute", top: 46, right: 0, zIndex: 40, width: 230, padding: "16px 18px", border: `1px solid ${t.border}`, borderRadius: 10, background: t.popBg, backdropFilter: "blur(14px)", boxShadow: "0 12px 40px rgba(0,0,0,.55)", animation: "fadeUp .3s ease both" }}>
                 <div style={{ fontFamily: cin, fontSize: 11, letterSpacing: ".22em", textTransform: "uppercase", color: t.textDim, marginBottom: 12 }}>Settings</div>
@@ -361,11 +360,20 @@ export default function CompanionCube() {
                     <span style={{ position: "absolute", top: 2, left: reduceMotion ? 20 : 2, width: 16, height: 16, borderRadius: "50%", background: t.accent, transition: "left 300ms ease" }} />
                   </button>
                 </label>
-                {session?.user && (
+                {user ? (
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${t.border}` }}>
-                    <div style={{ fontSize: 12.5, color: t.textDim, marginBottom: 8, wordBreak: "break-all" }}>{session.user.email}</div>
-                    <button className="cc-hover" onClick={() => supabase.auth.signOut()}
+                    <div style={{ fontSize: 12.5, color: t.textDim, marginBottom: 8, wordBreak: "break-all" }}>{user.email}</div>
+                    <button className="cc-hover" onClick={async () => {
+                      if (typeof window !== "undefined") localStorage.setItem("cc-guest", "1");
+                      await supabase.auth.signOut({ scope: "local" });
+                      setSession(null); setConvoId(null); setSettingsOpen(false);
+                    }}
                       style={{ fontFamily: gar, fontSize: 14, color: t.textDim, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>Sign out</button>
+                  </div>
+                ) : authEnabled && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${t.border}` }}>
+                    <button className="cc-hover" onClick={signInGoogle}
+                      style={{ fontFamily: gar, fontSize: 14, color: t.accent, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>Sign in with Google</button>
                   </div>
                 )}
               </div>
@@ -515,6 +523,26 @@ export default function CompanionCube() {
           </main>
         </div>
       </div>
+
+      {authModalOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(2,5,10,.72)", backdropFilter: "blur(6px)", animation: "fadeIn .4s ease both" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, textAlign: "center", padding: 44, margin: 20, maxWidth: 420, border: `1px solid ${t.border}`, borderRadius: 16, background: t.popBg, boxShadow: "0 24px 70px rgba(0,0,0,.6)", animation: "fadeUp .4s ease both" }}>
+            <img src="/assets/icon-hk.png" width={64} height={64} alt="" style={{ filter: "drop-shadow(0 0 16px rgba(140,195,255,.3))" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            <div style={{ fontFamily: cin, fontSize: 22, fontWeight: 500, letterSpacing: ".26em", textTransform: "uppercase" }}>CompanionCube</div>
+            <div style={{ fontSize: 16, lineHeight: 1.6, color: t.textDim, fontStyle: "italic" }}>
+              A spoiler-aware guide to Hallownest and Pharloom. Sign in to carry your progress across your devices.
+            </div>
+            <button className="cc-hover" onClick={signInGoogle}
+              style={{ marginTop: 4, fontFamily: gar, fontSize: 16, padding: "12px 28px", borderRadius: 10, cursor: "pointer", border: `1px solid ${t.glowDim}`, background: t.chipBg, color: t.accent }}>
+              Continue with Google
+            </button>
+            <button onClick={() => { if (typeof window !== "undefined") localStorage.setItem("cc-guest", "1"); setAuthModalOpen(false); }}
+              style={{ fontFamily: gar, fontSize: 14, color: t.textDim, background: "transparent", border: "none", cursor: "pointer" }}>
+              Continue without signing in
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
