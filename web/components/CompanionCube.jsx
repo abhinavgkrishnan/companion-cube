@@ -13,7 +13,7 @@ const THEMES = {
   hk: {
     text: "#e6eff8", textDim: "rgba(196,216,234,.55)", accent: "#d7ecff", glow: "#a8d8ff",
     glowDim: "rgba(168,216,255,.45)", glowSoft: "rgba(140,195,255,.22)",
-    border: "rgba(160,200,240,.16)", panelBg: "rgba(8,16,30,.45)", popBg: "rgba(8,15,27,.985)",
+    border: "rgba(160,200,240,.16)", panelBg: "rgba(8,16,30,.45)", popBg: "rgb(9,16,28)",
     inputBg: "rgba(10,22,40,.55)", chipBg: "rgba(120,180,255,.07)", rowHover: "rgba(140,190,255,.07)",
     trackBg: "rgba(140,190,255,.12)", userBg: "rgba(70,125,190,.16)", userBd: "rgba(130,180,240,.25)",
     guideBg: "rgba(12,24,44,.55)", sendBg: "rgba(60,110,175,.22)", glowDimGrad: "rgba(168,216,255,.25)",
@@ -21,7 +21,7 @@ const THEMES = {
   ss: {
     text: "#f4e9da", textDim: "rgba(232,206,172,.55)", accent: "#f5dcab", glow: "#e8b46a",
     glowDim: "rgba(232,180,106,.45)", glowSoft: "rgba(232,180,106,.2)",
-    border: "rgba(226,170,96,.18)", panelBg: "rgba(28,12,8,.45)", popBg: "rgba(26,11,7,.985)",
+    border: "rgba(226,170,96,.18)", panelBg: "rgba(28,12,8,.45)", popBg: "rgb(27,12,8)",
     inputBg: "rgba(36,16,10,.55)", chipBg: "rgba(232,180,106,.08)", rowHover: "rgba(232,180,106,.08)",
     trackBg: "rgba(232,180,106,.14)", userBg: "rgba(170,70,45,.18)", userBd: "rgba(220,130,90,.28)",
     guideBg: "rgba(38,18,12,.55)", sendBg: "rgba(150,80,40,.24)", glowDimGrad: "rgba(232,180,106,.25)",

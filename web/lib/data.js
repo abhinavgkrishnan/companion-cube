@@ -39,10 +39,10 @@ export async function loadConversation(user, game) {
     convo = res.data;
   }
   const { data: msgs } = await supabase
-    .from("messages").select("role, content, citations").eq("conversation_id", convo.id).order("id");
+    .from("messages").select("id, role, content, citations").eq("conversation_id", convo.id).order("id");
   return {
     id: convo.id,
-    messages: (msgs || []).map((m) => ({ role: m.role, md: m.content, citations: m.citations || [] })),
+    messages: (msgs || []).map((m) => ({ id: `db-${m.id}`, role: m.role, md: m.content, citations: m.citations || [] })),
   };
 }
 
