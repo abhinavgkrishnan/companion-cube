@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import { supabase, authEnabled } from "@/lib/supabase";
+import { loadConversation, loadProgress, saveMessage, saveProgress } from "@/lib/data";
+
 // Dust density + vignette were canvas-editor props in the source design; fixed here.
 const DUST_DENSITY = 110;
 const VIGNETTE = 0.85;
@@ -27,10 +30,11 @@ const THEMES = {
 
 const EMPTY_BEATS = { abilities: [], areas: [], bosses: [] };
 
-// ─── Real API (proxied to the FastAPI backend via next.config rewrites) ───
+// ─── Real API (proxied to FastAPI in dev via next.config; NEXT_PUBLIC_API_BASE in prod) ───
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 async function fetchBeats(gameKey) {
   try {
-    const r = await fetch(`/api/beats?game=${gameKey}`);
+    const r = await fetch(`${API_BASE}/api/beats?game=${gameKey}`);
     if (!r.ok) throw new Error();
     return await r.json();
   } catch {
@@ -38,7 +42,7 @@ async function fetchBeats(gameKey) {
   }
 }
 async function postQuery(body) {
-  const r = await fetch("/api/query", {
+  const r = await fetch(`${API_BASE}/api/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -92,6 +96,8 @@ export default function CompanionCube() {
   const [input, setInput] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [session, setSession] = useState(authEnabled ? undefined : null);   // undefined=resolving, null=signed out
+  const [convoId, setConvoId] = useState(null);
 
   const canvasRef = useRef(null);
   const bgWrapRef = useRef(null);
@@ -104,8 +110,10 @@ export default function CompanionCube() {
   const streamTRef = useRef(null);
   const reduceMotionRef = useRef(reduceMotion);
   const gameRef = useRef(game);
+  const messagesRef = useRef([]);
   reduceMotionRef.current = reduceMotion;
   gameRef.current = game;
+  messagesRef.current = messages;
 
   // Load the checklist for the current game from the backend.
   useEffect(() => {
@@ -114,6 +122,26 @@ export default function CompanionCube() {
     fetchBeats(gk).then((b) => { if (alive) setBeats(b || EMPTY_BEATS); });
     return () => { alive = false; };
   }, [game]);
+
+  // Supabase auth session (stays null when auth isn't configured -> local mode).
+  useEffect(() => {
+    if (!authEnabled) return;
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Load this game's saved progress + conversation whenever the game or sign-in changes.
+  useEffect(() => {
+    if (session === undefined) return;                 // auth still resolving
+    let alive = true;
+    const gk = game === "ss" ? "silksong" : "hollow_knight";
+    const user = session?.user ?? null;
+    const defaults = game === "ss" ? ["moss_grotto"] : ["forgotten_crossroads"];
+    loadProgress(user, gk, defaults).then((b) => { if (alive) setChecked((st) => ({ ...st, [game]: b })); });
+    loadConversation(user, gk).then((c) => { if (alive) { setConvoId(c.id); setMessages(c.messages); } });
+    return () => { alive = false; };
+  }, [game, session]);
 
   // Canvas dust background + mouse parallax
   useEffect(() => {
@@ -185,10 +213,15 @@ export default function CompanionCube() {
     setMessages((s) => [...s, { id, role: "user", md: qtext }, { id: id + 1, role: "guide", md: "", pending: true, citations: [] }]);
     const el = sendBtnRef.current;
     if (el) { el.style.animation = "none"; requestAnimationFrame(() => { if (sendBtnRef.current) sendBtnRef.current.style.animation = "sendGlow .9s ease-out"; }); }
-    postQuery({ question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game] })
-      .then((res) => stream(id + 1, res))
+    const history = messagesRef.current
+      .filter((m) => m.md)
+      .slice(-6)
+      .map((m) => ({ role: m.role === "guide" ? "assistant" : "user", content: m.md }));
+    saveMessage(convoId, "user", qtext);
+    postQuery({ question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game], history })
+      .then((res) => { stream(id + 1, res); saveMessage(convoId, "guide", res.answer, res.citations || []); })
       .catch(() => stream(id + 1, { answer: "*The link to the archives is broken.*\n\nIs the backend running? Start it with `python -m uvicorn api.main:app --port 8000` from the repo root.", citations: [] }));
-  }, [game, mode, tolerance, checked, stream]);
+  }, [game, mode, tolerance, checked, convoId, stream]);
 
   // ─── derived view values ───
   const t = THEMES[game];
@@ -197,11 +230,18 @@ export default function CompanionCube() {
   const q = search.trim().toLowerCase();
   const hkOn = game === "hk", ssOn = game === "ss";
 
-  const toggleItem = (id) => setChecked((st) => ({ ...st, [game]: done.includes(id) ? st[game].filter((x) => x !== id) : [...st[game], id] }));
+  const gameKey = game === "ss" ? "silksong" : "hollow_knight";
+  const persist = (beats) => saveProgress(session?.user ?? null, gameKey, beats);
+  const toggleItem = (id) => {
+    const next = done.includes(id) ? done.filter((x) => x !== id) : [...done, id];
+    setChecked((st) => ({ ...st, [game]: next }));
+    persist(next);
+  };
   const allIds = all.map((a) => a.id);
   const setPreset = (tier) => {
     const ids = tier === "just" ? [] : tier === "end" ? allIds : allIds.slice(0, Math.ceil(allIds.length / 2));
     setChecked((st) => ({ ...st, [game]: ids }));
+    persist(ids);
   };
 
   const groups = [["Areas", "areas"], ["Bosses", "bosses"], ["Abilities", "abilities"]].map(([name, key]) => {
@@ -247,6 +287,27 @@ export default function CompanionCube() {
   const cin = "Cinzel, serif";
   const gar = "'EB Garamond', serif";
   const icon = game === "hk" ? "/assets/icon-hk.png" : "/assets/icon-ss.png";
+
+  if (authEnabled && session === undefined) {
+    return <div style={{ position: "fixed", inset: 0, background: "#04090f" }} />;
+  }
+  if (authEnabled && session === null) {
+    return (
+      <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: gar, color: t.text, background: "radial-gradient(120% 90% at 50% -10%, #10263f 0%, #081527 34%, #04090f 68%, #02050a 100%)" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, textAlign: "center", padding: 40, maxWidth: 400 }}>
+          <img src="/assets/icon-hk.png" width={72} height={72} alt="" style={{ filter: "drop-shadow(0 0 16px rgba(140,195,255,.3))" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+          <div style={{ fontFamily: cin, fontSize: 24, fontWeight: 500, letterSpacing: ".26em", textTransform: "uppercase" }}>CompanionCube</div>
+          <div style={{ fontSize: 16.5, lineHeight: 1.6, color: t.textDim, fontStyle: "italic" }}>
+            A spoiler-aware guide to Hallownest and Pharloom. Sign in to carry your progress across your devices.
+          </div>
+          <button className="cc-hover" onClick={() => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: typeof window !== "undefined" ? window.location.origin : undefined } })}
+            style={{ marginTop: 4, fontFamily: gar, fontSize: 16, padding: "12px 28px", borderRadius: 10, cursor: "pointer", border: `1px solid ${t.glowDim}`, background: t.chipBg, color: t.accent }}>
+            Continue with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, overflow: "hidden", fontFamily: gar, color: t.text, transition: "color 1200ms ease", ...rootVars }}>
@@ -300,6 +361,13 @@ export default function CompanionCube() {
                     <span style={{ position: "absolute", top: 2, left: reduceMotion ? 20 : 2, width: 16, height: 16, borderRadius: "50%", background: t.accent, transition: "left 300ms ease" }} />
                   </button>
                 </label>
+                {session?.user && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${t.border}` }}>
+                    <div style={{ fontSize: 12.5, color: t.textDim, marginBottom: 8, wordBreak: "break-all" }}>{session.user.email}</div>
+                    <button className="cc-hover" onClick={() => supabase.auth.signOut()}
+                      style={{ fontFamily: gar, fontSize: 14, color: t.textDim, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>Sign out</button>
+                  </div>
+                )}
               </div>
             )}
           </div>
