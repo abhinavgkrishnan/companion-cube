@@ -324,7 +324,7 @@ export default function CompanionCube() {
       {/* ── app ── */}
       <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
 
-        <header style={{ display: "flex", alignItems: "center", gap: 20, padding: "14px 26px", borderBottom: `1px solid ${t.border}`, transition: "border-color 1200ms ease", backdropFilter: "blur(4px)" }}>
+        <header style={{ position: "relative", zIndex: 50, display: "flex", alignItems: "center", gap: 20, padding: "14px 26px", borderBottom: `1px solid ${t.border}`, transition: "border-color 1200ms ease", backdropFilter: "blur(4px)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 280 }}>
             <span style={{ fontSize: 15, color: t.glow, transition: "color 1200ms ease" }}>❖</span>
             <span style={{ fontFamily: cin, fontWeight: 600, fontSize: 17, letterSpacing: ".32em", textTransform: "uppercase", animation: "titleGlow 6s ease-in-out infinite" }}>CompanionCube</span>
@@ -349,8 +349,9 @@ export default function CompanionCube() {
                 ? <img src={avatarUrl} alt="" referrerPolicy="no-referrer" width={38} height={38} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={() => setAvatarError(true)} />
                 : user ? <span>{initials || "★"}</span> : <span style={{ color: t.textDim }}>✦</span>}
             </button>
+            {settingsOpen && <div onClick={() => setSettingsOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 39 }} />}
             {settingsOpen && (
-              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 40, width: 230, padding: "16px 18px", border: `1px solid ${t.border}`, borderRadius: 10, background: t.popBg, backdropFilter: "blur(14px)", boxShadow: "0 12px 40px rgba(0,0,0,.55)", animation: "fadeUp .3s ease both" }}>
+              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 40, width: 230, padding: "16px 18px", border: `1px solid ${t.border}`, borderRadius: 10, background: t.popBg, boxShadow: "0 12px 40px rgba(0,0,0,.55)", animation: "fadeUp .3s ease both" }}>
                 <div style={{ fontFamily: cin, fontSize: 11, letterSpacing: ".22em", textTransform: "uppercase", color: t.textDim, marginBottom: 12 }}>Settings</div>
                 <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 15, cursor: "pointer" }}>
                   <span>Reduce motion</span>
