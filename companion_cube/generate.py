@@ -70,14 +70,15 @@ def build_prompt(query, chunks, mode: Mode, game: str, progress: str = "") -> tu
 
 
 class LLM(Protocol):
-    def complete(self, system: str, user: str) -> str: ...
+    def complete(self, system: str, user: str, history: list | None = None) -> str: ...
 
 
 class DryRunLLM:
-    def complete(self, system: str, user: str) -> str:
+    def complete(self, system: str, user: str, history: list | None = None) -> str:
+        hist = "\n".join(f"[{m['role']}] {m['content'][:60]}" for m in (history or []))
         return (
             "[dry-run: no LLM configured — showing the grounded prompt that would be sent]\n"
-            f"--- system ---\n{system}\n--- user ---\n{user}"
+            f"--- history ---\n{hist}\n--- system ---\n{system}\n--- user ---\n{user}"
         )
 
 
@@ -88,12 +89,12 @@ class AnthropicLLM:
         self._client = anthropic.Anthropic()
         self._model = model
 
-    def complete(self, system: str, user: str) -> str:
+    def complete(self, system: str, user: str, history: list | None = None) -> str:
         resp = self._client.messages.create(
             model=self._model,
             max_tokens=1024,
             system=system,
-            messages=[{"role": "user", "content": user}],
+            messages=[*(history or []), {"role": "user", "content": user}],
         )
         return "".join(block.text for block in resp.content if block.type == "text")
 
@@ -109,7 +110,7 @@ def default_llm() -> LLM:
 
 
 def generate(query, chunks, mode: Mode, game: str = "hollow_knight", progress: str = "",
-             llm: LLM | None = None) -> str:
+             history: list | None = None, llm: LLM | None = None) -> str:
     llm = llm or default_llm()
     system, user = build_prompt(query, chunks, mode, game, progress)
-    return llm.complete(system, user)
+    return llm.complete(system, user, history)

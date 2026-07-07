@@ -98,6 +98,16 @@ class Query(BaseModel):
     mode: str = "hold_my_hand"
     tolerance: str = "none"
     completed_beats: list[str] = []
+    history: list[dict] = []       # recent [{role, content}] turns from the client, for context
+
+
+def _history(turns):
+    """Keep the last few turns, alternating and starting with the user (as the model requires)."""
+    hist = [{"role": t.get("role"), "content": t.get("content", "")}
+            for t in turns if t.get("role") in ("user", "assistant")][-6:]
+    if hist and hist[0]["role"] != "user":
+        hist = hist[1:]
+    return hist
 
 
 def _progress_summary(game: str, completed: list[str]) -> str:
@@ -137,7 +147,8 @@ def query(q: Query):
 
     hits = [h for h in hits if SUFFIX.sub("", h["doc_title"]).lower() not in JUNK_DOCS][:6]
     progress = _progress_summary(q.game, q.completed_beats)
-    answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game, progress=progress)).strip()
+    answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game, progress=progress,
+                                          history=_history(q.history))).strip()
 
     seen, citations = set(), []
     for h in hits:
