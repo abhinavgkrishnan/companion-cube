@@ -12,6 +12,7 @@ reached beats" becomes "reveals none of the uncompleted beats" (must_not · matc
 
 import atexit
 import json
+import threading
 from pathlib import Path
 from typing import cast
 
@@ -37,17 +38,21 @@ _reranker = None
 _client = None
 
 
+_load_lock = threading.Lock()
+
+
 def _resources():
     global _dense, _sparse, _reranker, _client
-    if _dense is None:
-        _dense = TextEmbedding(DENSE_MODEL)
-    if _sparse is None:
-        _sparse = SparseTextEmbedding(SPARSE_MODEL)
-    if _reranker is None:
-        _reranker = TextCrossEncoder(RERANK_MODEL)
-    if _client is None:
-        _client = QdrantClient(path=str(QDRANT_PATH))
-        atexit.register(_client.close)   # close before interpreter teardown, not in __del__
+    with _load_lock:   # the startup warmup thread and the first request must not double-load
+        if _dense is None:
+            _dense = TextEmbedding(DENSE_MODEL)
+        if _sparse is None:
+            _sparse = SparseTextEmbedding(SPARSE_MODEL)
+        if _reranker is None:
+            _reranker = TextCrossEncoder(RERANK_MODEL)
+        if _client is None:
+            _client = QdrantClient(path=str(QDRANT_PATH))
+            atexit.register(_client.close)   # close before interpreter teardown, not in __del__
     return _dense, _sparse, _reranker, _client
 
 
