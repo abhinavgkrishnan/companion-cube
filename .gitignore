@@ -18,3 +18,7 @@ out/
 # Generated data — rebuilt by the ingestion pipeline.
 # Keeps regenerable output, the binary vector store, and CC BY-SA wiki text out of git.
 data/
+
+# Personal notes
+ARCHITECTURE.md
+DEPLOY.md

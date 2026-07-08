@@ -1,0 +1,19 @@
+# Only runtime data ships: data/qdrant + data/<game>/beats.json.
+data/*/raw/
+data/*/clean/
+data/*/tags/
+data/*/tags.v1/
+data/*/chunks.json
+data/*/chunks_tagged.json
+data/*/.seen.json
+
+web/
+.git/
+.env
+.env.*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+node_modules/
+ARCHITECTURE.md
