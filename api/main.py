@@ -15,6 +15,7 @@ the beat model to progression-only is a follow-up.
 import json
 import os
 import re
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -23,6 +24,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from companion_cube import retrieval
 from companion_cube.generate import build_llm, generate
 from companion_cube.models import Mode, PlayerState, SpoilerTolerance
 from companion_cube.retrieval import retrieve
@@ -69,6 +71,9 @@ JUNK_DOCS = EXCLUDE | {"gallery", "controls", "completion"}   # meta pages to ke
 
 app = FastAPI(title="CompanionCube API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# warm the embedding/rerank models off the request path — in a thread so the port binds immediately
+threading.Thread(target=retrieval._resources, daemon=True).start()
 
 # Per-IP rate limit (in-memory; fine for a single uvicorn worker) to blunt spam.
 RATE_PER_MIN = int(os.getenv("RATE_PER_MIN", "15"))

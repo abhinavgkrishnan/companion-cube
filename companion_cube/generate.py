@@ -105,12 +105,19 @@ class GeminiLLM:
             f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent",
             params={"key": self._key},
             json={"systemInstruction": {"parts": [{"text": system}]}, "contents": contents,
-                  "generationConfig": {"maxOutputTokens": MAX_TOKENS}},
+                  # thinking off: flash thinks by default and its thought tokens count against
+                  # maxOutputTokens, truncating answers mid-sentence (and adding latency)
+                  "generationConfig": {"maxOutputTokens": MAX_TOKENS,
+                                       "thinkingConfig": {"thinkingBudget": 0}}},
             timeout=TIMEOUT,
         )
         r.raise_for_status()
-        parts = r.json()["candidates"][0]["content"]["parts"]
-        return "".join(p.get("text", "") for p in parts)
+        data = r.json()
+        parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts") or []
+        text = "".join(p.get("text", "") for p in parts)
+        if not text:
+            raise RuntimeError(f"empty gemini response: {str(data)[:200]}")
+        return text
 
 
 class OpenAICompatLLM:
