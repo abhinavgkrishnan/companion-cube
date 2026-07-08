@@ -100,6 +100,7 @@ export default function CompanionCube() {
   const [convoId, setConvoId] = useState(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [byok, setByok] = useState({ provider: "", key: "", model: "" });
 
   const canvasRef = useRef(null);
   const bgWrapRef = useRef(null);
@@ -200,6 +201,12 @@ export default function CompanionCube() {
 
   useEffect(() => { if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight; }, [messages]);
 
+  // Bring-your-own-key settings live in this browser only.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { const raw = localStorage.getItem("cc-byok"); if (raw) setByok(JSON.parse(raw)); } catch {}
+  }, []);
+
   // Close the settings menu on any click outside it.
   useEffect(() => {
     if (!settingsOpen) return;
@@ -235,10 +242,11 @@ export default function CompanionCube() {
       .slice(-6)
       .map((m) => ({ role: m.role === "guide" ? "assistant" : "user", content: m.md }));
     saveMessage(convoId, "user", qtext);
-    postQuery({ question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game], history })
+    postQuery({ question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game], history,
+                provider: byok.provider || undefined, api_key: byok.key || undefined, model: byok.model || undefined })
       .then((res) => { stream(id + 1, res); saveMessage(convoId, "guide", res.answer, res.citations || []); })
       .catch(() => stream(id + 1, { answer: "*The link to the archives is broken.*\n\nIs the backend running? Start it with `python -m uvicorn api.main:app --port 8000` from the repo root.", citations: [] }));
-  }, [game, mode, tolerance, checked, convoId, stream]);
+  }, [game, mode, tolerance, checked, convoId, byok, stream]);
 
   // ─── derived view values ───
   const t = THEMES[game];
@@ -249,6 +257,7 @@ export default function CompanionCube() {
 
   const gameKey = game === "ss" ? "silksong" : "hollow_knight";
   const persist = (beats) => saveProgress(session?.user ?? null, gameKey, beats);
+  const saveByok = (b) => { setByok(b); if (typeof window !== "undefined") localStorage.setItem("cc-byok", JSON.stringify(b)); };
   const toggleItem = (id) => {
     const next = done.includes(id) ? done.filter((x) => x !== id) : [...done, id];
     setChecked((st) => ({ ...st, [game]: next }));
@@ -359,7 +368,7 @@ export default function CompanionCube() {
                 : user ? <span>{initials || "★"}</span> : <span style={{ color: t.textDim }}>✦</span>}
             </button>
             {settingsOpen && (
-              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 40, width: 230, padding: "16px 18px", border: `1px solid ${t.border}`, borderRadius: 10, background: t.popBg, boxShadow: "0 12px 40px rgba(0,0,0,.55)", animation: "fadeUp .3s ease both" }}>
+              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 40, width: 264, padding: "16px 18px", border: `1px solid ${t.border}`, borderRadius: 10, background: t.popBg, boxShadow: "0 12px 40px rgba(0,0,0,.55)", animation: "fadeUp .3s ease both" }}>
                 <div style={{ fontFamily: cin, fontSize: 11, letterSpacing: ".22em", textTransform: "uppercase", color: t.textDim, marginBottom: 12 }}>Settings</div>
                 <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 15, cursor: "pointer" }}>
                   <span>Reduce motion</span>
@@ -367,6 +376,28 @@ export default function CompanionCube() {
                     <span style={{ position: "absolute", top: 2, left: reduceMotion ? 20 : 2, width: 16, height: 16, borderRadius: "50%", background: t.accent, transition: "left 300ms ease" }} />
                   </button>
                 </label>
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${t.border}` }}>
+                  <div style={{ fontFamily: cin, fontSize: 10, letterSpacing: ".2em", textTransform: "uppercase", color: t.textDim, marginBottom: 8 }}>Model</div>
+                  <select value={byok.provider} onChange={(e) => saveByok({ ...byok, provider: e.target.value })}
+                    style={{ width: "100%", padding: "8px", fontFamily: gar, fontSize: 13.5, borderRadius: 6, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none", cursor: "pointer" }}>
+                    <option value="">Gemini Flash — free, on us</option>
+                    <option value="anthropic">Anthropic — your key</option>
+                    <option value="openai">OpenAI — your key</option>
+                    <option value="gemini">Gemini — your key</option>
+                    <option value="openrouter">OpenRouter — any model, your key</option>
+                  </select>
+                  {byok.provider ? (
+                    <>
+                      <input type="password" value={byok.key} onChange={(e) => saveByok({ ...byok, key: e.target.value })} placeholder="Paste your API key"
+                        style={{ width: "100%", marginTop: 8, padding: "8px 10px", fontFamily: gar, fontSize: 13.5, borderRadius: 6, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none" }} />
+                      <input value={byok.model} onChange={(e) => saveByok({ ...byok, model: e.target.value })} placeholder="Model id (optional)"
+                        style={{ width: "100%", marginTop: 6, padding: "7px 10px", fontFamily: gar, fontSize: 12.5, borderRadius: 6, border: `1px solid ${t.border}`, background: t.inputBg, color: t.textDim, outline: "none" }} />
+                      <div style={{ fontSize: 11.5, color: t.textDim, marginTop: 7, lineHeight: 1.45 }}>Your key stays in this browser, sent only with your questions.</div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: t.textDim, marginTop: 7, lineHeight: 1.45 }}>You&apos;re on Gemini Flash, free — pick a provider to use your own key.</div>
+                  )}
+                </div>
                 {user ? (
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${t.border}` }}>
                     <div style={{ fontSize: 12.5, color: t.textDim, marginBottom: 8, wordBreak: "break-all" }}>{user.email}</div>

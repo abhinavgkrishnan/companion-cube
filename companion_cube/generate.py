@@ -1,8 +1,8 @@
 """Prompt assembly and generation.
 
-Chunks here are Qdrant payload dicts. DryRunLLM prints the assembled prompt so the pipeline runs
-with no key; AnthropicLLM (Claude) is used automatically when a key is available via the environment
-or the gitignored .env.
+Chunks here are Qdrant payload dicts. The default model is Gemini Flash (server GEMINI_API_KEY);
+build_llm() also accepts a user's own provider + key (Anthropic, OpenAI, Gemini, or OpenRouter) for
+BYOK. DryRunLLM prints the assembled prompt when no key is configured.
 """
 
 from __future__ import annotations
@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Protocol
+
+import httpx
 
 from .models import Mode
 
@@ -69,6 +71,15 @@ def build_prompt(query, chunks, mode: Mode, game: str, progress: str = "") -> tu
     return system, user
 
 
+MAX_TOKENS = 1024
+TIMEOUT = 60
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+DEFAULT_MODELS = {
+    "anthropic": "claude-sonnet-4-6", "openai": "gpt-4o-mini",
+    "openrouter": "openai/gpt-4o-mini", "gemini": DEFAULT_GEMINI_MODEL,
+}
+
+
 class LLM(Protocol):
     def complete(self, system: str, user: str, history: list | None = None) -> str: ...
 
@@ -82,25 +93,82 @@ class DryRunLLM:
         )
 
 
+class GeminiLLM:
+    def __init__(self, api_key: str, model: str = DEFAULT_GEMINI_MODEL) -> None:
+        self._key, self._model = api_key, model
+
+    def complete(self, system: str, user: str, history: list | None = None) -> str:
+        contents = [{"role": "user" if m["role"] == "user" else "model", "parts": [{"text": m["content"]}]}
+                    for m in (history or [])]
+        contents.append({"role": "user", "parts": [{"text": user}]})
+        r = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent",
+            params={"key": self._key},
+            json={"systemInstruction": {"parts": [{"text": system}]}, "contents": contents,
+                  "generationConfig": {"maxOutputTokens": MAX_TOKENS}},
+            timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        parts = r.json()["candidates"][0]["content"]["parts"]
+        return "".join(p.get("text", "") for p in parts)
+
+
+class OpenAICompatLLM:
+    """OpenAI-style chat completions — also serves OpenRouter (same schema, different base URL)."""
+
+    def __init__(self, api_key: str, model: str, base_url: str) -> None:
+        self._key, self._model, self._base = api_key, model, base_url.rstrip("/")
+
+    def complete(self, system: str, user: str, history: list | None = None) -> str:
+        messages = [{"role": "system", "content": system}, *(history or []), {"role": "user", "content": user}]
+        r = httpx.post(
+            f"{self._base}/chat/completions",
+            headers={"Authorization": f"Bearer {self._key}"},
+            json={"model": self._model, "messages": messages, "max_tokens": MAX_TOKENS},
+            timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
+
+
 class AnthropicLLM:
-    def __init__(self, model: str = "claude-sonnet-4-6") -> None:
+    def __init__(self, api_key: str | None = None, model: str = "claude-sonnet-4-6") -> None:
         import anthropic
 
-        self._client = anthropic.Anthropic()
+        self._client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
         self._model = model
 
     def complete(self, system: str, user: str, history: list | None = None) -> str:
         resp = self._client.messages.create(
             model=self._model,
-            max_tokens=1024,
+            max_tokens=MAX_TOKENS,
             system=system,
             messages=[*(history or []), {"role": "user", "content": user}],
         )
         return "".join(block.text for block in resp.content if block.type == "text")
 
 
+def build_llm(provider: str | None = None, api_key: str | None = None, model: str | None = None) -> LLM:
+    """A user's own provider + key (BYOK) when both are given; otherwise the server default."""
+    provider = (provider or "").lower().strip()
+    if provider and api_key:
+        model = model or DEFAULT_MODELS.get(provider)
+        if provider == "anthropic":
+            return AnthropicLLM(api_key=api_key, model=model or "claude-sonnet-4-6")
+        if provider == "gemini":
+            return GeminiLLM(api_key, model or DEFAULT_GEMINI_MODEL)
+        if provider == "openai":
+            return OpenAICompatLLM(api_key, model or "gpt-4o-mini", "https://api.openai.com/v1")
+        if provider == "openrouter":
+            return OpenAICompatLLM(api_key, model or "openai/gpt-4o-mini", "https://openrouter.ai/api/v1")
+    return default_llm()
+
+
 def default_llm() -> LLM:
     load_env()
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if gemini_key:
+        return GeminiLLM(gemini_key)
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
             return AnthropicLLM()

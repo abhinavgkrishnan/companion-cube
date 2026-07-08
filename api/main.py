@@ -13,14 +13,17 @@ the beat model to progression-only is a follow-up.
 """
 
 import json
+import os
 import re
+import time
+from collections import deque
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from companion_cube.generate import generate
+from companion_cube.generate import build_llm, generate
 from companion_cube.models import Mode, PlayerState, SpoilerTolerance
 from companion_cube.retrieval import retrieve
 
@@ -67,6 +70,27 @@ JUNK_DOCS = EXCLUDE | {"gallery", "controls", "completion"}   # meta pages to ke
 app = FastAPI(title="CompanionCube API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# Per-IP rate limit (in-memory; fine for a single uvicorn worker) to blunt spam.
+RATE_PER_MIN = int(os.getenv("RATE_PER_MIN", "15"))
+RATE_PER_DAY = int(os.getenv("RATE_PER_DAY", "300"))
+_hits: dict[str, deque] = {}
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "?")
+
+
+def _rate_ok(ip: str) -> bool:
+    now = time.time()
+    dq = _hits.setdefault(ip, deque())
+    while dq and dq[0] < now - 86400:
+        dq.popleft()
+    if len(dq) >= RATE_PER_DAY or sum(ts > now - 60 for ts in dq) >= RATE_PER_MIN:
+        return False
+    dq.append(now)
+    return True
+
 
 def _indexed(game: str) -> bool:
     return (ROOT / "data" / game / "beats.json").exists()
@@ -99,6 +123,9 @@ class Query(BaseModel):
     tolerance: str = "none"
     completed_beats: list[str] = []
     history: list[dict] = []       # recent [{role, content}] turns from the client, for context
+    provider: str | None = None    # BYOK: anthropic | openai | gemini | openrouter (else server default)
+    api_key: str | None = None
+    model: str | None = None
 
 
 def _history(turns):
@@ -131,7 +158,10 @@ def _progress_summary(game: str, completed: list[str]) -> str:
 
 
 @app.post("/api/query")
-def query(q: Query):
+def query(q: Query, request: Request):
+    if not _rate_ok(_client_ip(request)):
+        return {"answer": "*Rest a moment.*\n\nYou are asking faster than I can answer — try again in a little while.", "citations": []}
+
     if not _indexed(q.game):
         return {"answer": "*That kingdom is not yet mapped.*\n\nSilksong hasn't been indexed yet — check back soon.", "citations": []}
 
@@ -147,8 +177,12 @@ def query(q: Query):
 
     hits = [h for h in hits if SUFFIX.sub("", h["doc_title"]).lower() not in JUNK_DOCS][:6]
     progress = _progress_summary(q.game, q.completed_beats)
-    answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game, progress=progress,
-                                          history=_history(q.history))).strip()
+    llm = build_llm(q.provider, q.api_key, q.model)
+    try:
+        answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game, progress=progress,
+                                              history=_history(q.history), llm=llm)).strip()
+    except Exception:
+        return {"answer": "*The words would not come.*\n\nThe model could not be reached. If you set your own API key in Settings, check that it is valid and has credit.", "citations": []}
 
     seen, citations = set(), []
     for h in hits:

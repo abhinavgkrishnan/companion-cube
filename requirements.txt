@@ -1,6 +1,7 @@
 # --- ingestion + retrieval + api (current) ---
 pytest>=8.0
 anthropic>=0.40           # spoiler tagging + generation (Claude)
+httpx>=0.27              # HTTP client for the model providers (Gemini / OpenAI / OpenRouter)
 qdrant-client>=1.9        # vector store + payload (metadata) filtering
 fastembed>=0.3            # dense (and later sparse / rerank) embeddings — ONNX, no torch
 fastapi>=0.110            # the /api bridge to the web UI
