@@ -1,5 +1,5 @@
-html, body { margin: 0; padding: 0; height: 100%; background: #04070d; overflow: hidden; }
-*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; background: #04070d; overflow: hidden; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+*, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 ::selection { background: rgba(140, 190, 255, .25); }
 input::placeholder { color: inherit; opacity: .45; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }

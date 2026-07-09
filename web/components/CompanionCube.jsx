@@ -83,10 +83,23 @@ function mdRender(md) {
   flush(); return blocks;
 }
 
+// Everything here is inline-styled, so breakpoints live in JS rather than media queries.
+function useViewportWidth() {
+  const [w, setW] = useState(1280);
+  useEffect(() => {
+    const on = () => setW(window.innerWidth);
+    on();
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return w;
+}
+
 export default function CompanionCube() {
   const [game, setGame] = useState("hk");
   const [beats, setBeats] = useState(EMPTY_BEATS);
   const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState({ areas: true, bosses: true, abilities: true });
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState("hold_my_hand");
@@ -234,6 +247,7 @@ export default function CompanionCube() {
     const gameKey = game === "ss" ? "silksong" : "hollow_knight";
     const id = Date.now();
     setInput("");
+    setDrawerOpen(false);
     setMessages((s) => [...s, { id, role: "user", md: qtext }, { id: id + 1, role: "guide", md: "", pending: true, citations: [] }]);
     const el = sendBtnRef.current;
     if (el) { el.style.animation = "none"; requestAnimationFrame(() => { if (sendBtnRef.current) sendBtnRef.current.style.animation = "sendGlow .9s ease-out"; }); }
@@ -249,6 +263,9 @@ export default function CompanionCube() {
   }, [game, mode, tolerance, checked, convoId, byok, stream]);
 
   // ─── derived view values ───
+  const vw = useViewportWidth();
+  const mobile = vw < 720;    // sidebar becomes a drawer behind a hamburger
+  const compact = vw < 1080;  // tighter header + gutters for tablets / landscape phones
   const t = THEMES[game];
   const done = checked[game];
   const all = [...beats.abilities, ...beats.areas, ...beats.bosses];
@@ -342,25 +359,31 @@ export default function CompanionCube() {
       {/* ── app ── */}
       <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
 
-        <header style={{ position: "relative", zIndex: 50, display: "flex", alignItems: "center", gap: 20, padding: "14px 26px", borderBottom: `1px solid ${t.border}`, transition: "border-color 1200ms ease", backdropFilter: "blur(4px)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 280 }}>
-            <span style={{ fontSize: 15, color: t.glow, transition: "color 1200ms ease" }}>❖</span>
-            <span style={{ fontFamily: cin, fontWeight: 600, fontSize: 17, letterSpacing: ".32em", textTransform: "uppercase", animation: "titleGlow 6s ease-in-out infinite" }}>CompanionCube</span>
+        <header style={{ position: "relative", zIndex: 50, display: "flex", alignItems: "center", gap: mobile ? 10 : 20, padding: mobile ? "10px 12px" : "14px 26px", borderBottom: `1px solid ${t.border}`, transition: "border-color 1200ms ease", backdropFilter: "blur(4px)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: mobile ? 9 : 12, minWidth: compact ? 0 : 280 }}>
+            {mobile && (
+              <button className="cc-settings" onClick={() => setDrawerOpen((v) => !v)} title="Your progress" aria-label="Toggle progress panel"
+                style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${t.border}`, background: "transparent", color: t.accent, fontSize: 16, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, transition: "all 500ms ease" }}>☰</button>
+            )}
+            <img src="/assets/cube.png" alt="" width={22} height={22} style={{ display: "block", flexShrink: 0, borderRadius: 5, filter: `drop-shadow(0 0 6px ${t.glowSoft})`, transition: "filter 1200ms ease" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            {vw >= 460 && (
+              <span style={{ fontFamily: cin, fontWeight: 600, fontSize: mobile ? 13 : 17, letterSpacing: mobile ? ".18em" : ".32em", textTransform: "uppercase", whiteSpace: "nowrap", animation: "titleGlow 6s ease-in-out infinite" }}>CompanionCube</span>
+            )}
           </div>
 
           <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 4, border: `1px solid ${t.border}`, borderRadius: 999, padding: 4, background: t.panelBg, transition: "border-color 1200ms ease, background 1200ms ease" }}>
               {[["hk", "Hollow Knight", "/assets/icon-hk.png", hkOn, "rgba(168,216,255,.45)"], ["ss", "Silksong", "/assets/icon-ss.png", ssOn, "rgba(232,180,106,.5)"]].map(([g, label, ic, on, iconGlow]) => (
                 <button key={g} onClick={() => { setGame(g); setSettingsOpen(false); }} title={label}
-                  style={{ display: "flex", alignItems: "center", gap: 9, whiteSpace: "nowrap", fontFamily: cin, fontSize: 12, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", padding: "6px 16px 6px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? t.glowDim : "transparent"}`, background: on ? t.chipBg : "transparent", color: on ? t.accent : t.textDim, textShadow: on ? `0 0 10px ${t.glowSoft}` : "none", transition: "all 700ms ease" }}>
-                  <img src={ic} alt="" width={24} height={24} style={{ display: "block", flexShrink: 0, opacity: on ? 1 : 0.5, filter: `drop-shadow(0 0 5px ${on ? iconGlow : "transparent"})`, transition: "all 700ms ease" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                  <span>{label}</span>
+                  style={{ display: "flex", alignItems: "center", gap: mobile ? 0 : 9, whiteSpace: "nowrap", fontFamily: cin, fontSize: 12, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", padding: mobile ? "6px 10px" : "6px 16px 6px 10px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? t.glowDim : "transparent"}`, background: on ? t.chipBg : "transparent", color: on ? t.accent : t.textDim, textShadow: on ? `0 0 10px ${t.glowSoft}` : "none", transition: "all 700ms ease" }}>
+                  <img src={ic} alt={label} width={24} height={24} style={{ display: "block", flexShrink: 0, opacity: on ? 1 : 0.5, filter: `drop-shadow(0 0 5px ${on ? iconGlow : "transparent"})`, transition: "all 700ms ease" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  {!mobile && <span>{label}</span>}
                 </button>
               ))}
             </div>
           </div>
 
-          <div ref={settingsRef} style={{ minWidth: 280, display: "flex", justifyContent: "flex-end", position: "relative" }}>
+          <div ref={settingsRef} style={{ minWidth: compact ? 0 : 280, display: "flex", justifyContent: "flex-end", position: "relative" }}>
             <button className="cc-settings" onClick={() => setSettingsOpen((v) => !v)} title={user ? displayName : "Settings"}
               style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${user ? t.glowDim : t.border}`, background: "transparent", color: t.accent, fontFamily: gar, fontSize: user ? 13 : 16, cursor: "pointer", transition: "all 500ms ease", overflow: "hidden", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {user && avatarUrl && !avatarError
@@ -368,7 +391,7 @@ export default function CompanionCube() {
                 : user ? <span>{initials || "★"}</span> : <span style={{ color: t.textDim }}>✦</span>}
             </button>
             {settingsOpen && (
-              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 40, width: 264, padding: "16px 18px", border: `1px solid ${t.border}`, borderRadius: 10, background: t.popBg, boxShadow: "0 12px 40px rgba(0,0,0,.55)", animation: "fadeUp .3s ease both" }}>
+              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 40, width: "min(264px, calc(100vw - 28px))", padding: "16px 18px", border: `1px solid ${t.border}`, borderRadius: 10, background: t.popBg, boxShadow: "0 12px 40px rgba(0,0,0,.55)", animation: "fadeUp .3s ease both" }}>
                 <div style={{ fontFamily: cin, fontSize: 11, letterSpacing: ".22em", textTransform: "uppercase", color: t.textDim, marginBottom: 12 }}>Settings</div>
                 <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 15, cursor: "pointer" }}>
                   <span>Reduce motion</span>
@@ -420,12 +443,23 @@ export default function CompanionCube() {
 
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
 
-          <aside style={{ width: collapsed ? 0 : 312, minWidth: 0, transition: "width 500ms cubic-bezier(.4,0,.2,1)", overflow: "hidden", borderRight: `1px solid ${t.border}`, background: t.panelBg, backdropFilter: "blur(6px)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
-            <div style={{ width: 312, display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+          {mobile && drawerOpen && (
+            <div onClick={() => setDrawerOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(2,5,10,.55)", animation: "fadeIn .3s ease both" }} />
+          )}
+          <aside style={mobile
+            ? { position: "fixed", top: 0, bottom: 0, left: 0, zIndex: 70, width: "min(320px, 85vw)", transform: drawerOpen ? "translateX(0)" : "translateX(-105%)", transition: "transform 420ms cubic-bezier(.4,0,.2,1), background 1200ms ease", borderRight: `1px solid ${t.border}`, background: t.popBg, boxShadow: drawerOpen ? "0 0 60px rgba(0,0,0,.6)" : "none", display: "flex", flexDirection: "column", paddingTop: "env(safe-area-inset-top)" }
+            : { width: collapsed ? 0 : compact ? 280 : 312, minWidth: 0, transition: "width 500ms cubic-bezier(.4,0,.2,1)", overflow: "hidden", borderRight: `1px solid ${t.border}`, background: t.panelBg, backdropFilter: "blur(6px)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+            <div style={{ width: mobile ? "100%" : compact ? 280 : 312, display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
               <div style={{ padding: "18px 20px 12px" }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
                   <div style={{ fontFamily: cin, fontSize: 14, fontWeight: 600, letterSpacing: ".2em", textTransform: "uppercase", color: t.accent, transition: "color 1200ms ease" }}>Where are you?</div>
-                  <div style={{ fontSize: 13, color: t.textDim }}>{checkedCount} / {all.length}</div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                    <div style={{ fontSize: 13, color: t.textDim }}>{checkedCount} / {all.length}</div>
+                    {mobile && (
+                      <button onClick={() => setDrawerOpen(false)} aria-label="Close progress panel"
+                        style={{ border: "none", background: "transparent", color: t.textDim, fontSize: 15, cursor: "pointer", padding: 0 }}>✕</button>
+                    )}
+                  </div>
                 </div>
                 <div style={{ marginTop: 12, height: 4, borderRadius: 2, background: t.trackBg, overflow: "hidden" }}>
                   <div style={{ height: "100%", width: progressPct, borderRadius: 2, background: `linear-gradient(90deg, ${t.glowDimGrad}, ${t.glow})`, boxShadow: `0 0 8px ${t.glowSoft}`, transition: "width 600ms cubic-bezier(.4,0,.2,1), background 1200ms ease" }} />
@@ -437,7 +471,7 @@ export default function CompanionCube() {
                   ))}
                 </div>
                 <input className="cc-focus" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a boss, area, ability…"
-                  style={{ marginTop: 12, width: "100%", padding: "9px 12px", fontFamily: gar, fontSize: 15, borderRadius: 8, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none", transition: "border-color 400ms ease" }} />
+                  style={{ marginTop: 12, width: "100%", padding: "9px 12px", fontFamily: gar, fontSize: 16, borderRadius: 8, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none", transition: "border-color 400ms ease" }} />
               </div>
 
               <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 20px", minHeight: 0 }}>
@@ -474,17 +508,19 @@ export default function CompanionCube() {
             </div>
           </aside>
 
-          <button className="cc-settings" onClick={() => setCollapsed((v) => !v)} title="Toggle progress panel"
-            style={{ width: 20, border: "none", background: "transparent", color: t.textDim, cursor: "pointer", fontSize: 11, flexShrink: 0, transition: "color 300ms" }}>{collapsed ? "❯" : "❮"}</button>
+          {!mobile && (
+            <button className="cc-settings" onClick={() => setCollapsed((v) => !v)} title="Toggle progress panel"
+              style={{ width: 20, border: "none", background: "transparent", color: t.textDim, cursor: "pointer", fontSize: 11, flexShrink: 0, transition: "color 300ms" }}>{collapsed ? "❯" : "❮"}</button>
+          )}
 
           <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-            <div ref={transcriptRef} style={{ flex: 1, overflowY: "auto", padding: "28px 8% 16px", minHeight: 0 }}>
+            <div ref={transcriptRef} style={{ flex: 1, overflowY: "auto", padding: mobile ? "18px 14px 10px" : compact ? "24px 5% 14px" : "28px 8% 16px", minHeight: 0 }}>
 
               {messages.length === 0 && (
                 <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, textAlign: "center", animation: "fadeIn 1.2s ease both" }}>
-                  <img src={icon} alt="" width={64} height={64} style={{ display: "block", width: 64, height: 64, filter: `drop-shadow(0 0 16px ${t.glowSoft})`, animation: "fadeIn 1.2s ease both" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                  <div style={{ fontFamily: cin, fontSize: 22, fontWeight: 500, letterSpacing: ".14em", textTransform: "uppercase" }}>{game === "hk" ? "Ask, little ghost" : "Ask, little weaver"}</div>
-                  <div style={{ maxWidth: 440, fontSize: 17, lineHeight: 1.6, color: t.textDim, fontStyle: "italic" }}>
+                  <img src={icon} alt="" width={64} height={64} style={{ display: "block", width: mobile ? 54 : 64, height: mobile ? 54 : 64, filter: `drop-shadow(0 0 16px ${t.glowSoft})`, animation: "fadeIn 1.2s ease both" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  <div style={{ fontFamily: cin, fontSize: mobile ? 18 : 22, fontWeight: 500, letterSpacing: ".14em", textTransform: "uppercase" }}>{game === "hk" ? "Ask, little ghost" : "Ask, little weaver"}</div>
+                  <div style={{ maxWidth: "min(440px, 100%)", fontSize: mobile ? 15 : 17, lineHeight: 1.6, color: t.textDim, fontStyle: "italic" }}>
                     {game === "hk"
                       ? "I know every corner of Hallownest — but I will only speak of paths you have already walked. Mark your journey, and ask freely."
                       : "Every thread of Pharloom passes through my hands — but I will not unspool what lies ahead of your climb. Mark your ascent, and ask freely."}
@@ -494,10 +530,10 @@ export default function CompanionCube() {
                     <span style={{ color: t.glow }}>✦</span>
                     <span style={{ width: 60, height: 1, background: t.border }} />
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", maxWidth: 560 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", maxWidth: "min(560px, 100%)" }}>
                     {starters.map((s) => (
                       <button key={s} className="cc-chip" onClick={() => ask(s)}
-                        style={{ fontFamily: gar, fontSize: 15, padding: "9px 18px", borderRadius: 999, cursor: "pointer", border: `1px solid ${t.border}`, background: t.chipBg, color: t.text, transition: "all 400ms ease" }}>{s}</button>
+                        style={{ fontFamily: gar, fontSize: mobile ? 14 : 15, padding: mobile ? "8px 15px" : "9px 18px", borderRadius: 999, cursor: "pointer", border: `1px solid ${t.border}`, background: t.chipBg, color: t.text, transition: "all 400ms ease" }}>{s}</button>
                     ))}
                   </div>
                 </div>
@@ -505,9 +541,9 @@ export default function CompanionCube() {
 
               {viewMessages.map((m) => (
                 <div key={m.id} style={{ display: "flex", justifyContent: m.justify, marginBottom: 20, animation: "fadeUp .5s ease both" }}>
-                  <div style={{ maxWidth: "68%", display: "flex", flexDirection: "column", gap: 8, alignItems: m.align }}>
+                  <div style={{ maxWidth: mobile ? "90%" : "68%", display: "flex", flexDirection: "column", gap: 8, alignItems: m.align }}>
                     <div style={{ fontFamily: cin, fontSize: 10, letterSpacing: ".24em", textTransform: "uppercase", color: t.textDim, padding: "0 4px" }}>{m.who}</div>
-                    <div style={{ padding: "14px 18px", borderRadius: m.radius, border: `1px solid ${m.bd}`, background: m.bg, fontSize: 16.5, lineHeight: 1.62, transition: "border-color 1200ms ease, background 1200ms ease" }}>
+                    <div style={{ padding: mobile ? "12px 14px" : "14px 18px", borderRadius: m.radius, border: `1px solid ${m.bd}`, background: m.bg, fontSize: mobile ? 15.5 : 16.5, lineHeight: 1.62, transition: "border-color 1200ms ease, background 1200ms ease" }}>
                       {m.pending && (
                         <span style={{ display: "inline-flex", gap: 5, padding: "4px 2px" }}>
                           <span style={{ width: 6, height: 6, borderRadius: "50%", background: t.glow, animation: "dotPulse 1.2s infinite" }} />
@@ -534,27 +570,27 @@ export default function CompanionCube() {
               ))}
             </div>
 
-            <div style={{ padding: "0 8% 22px", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, flexWrap: "wrap" }}>
+            <div style={{ padding: mobile ? "0 12px calc(12px + env(safe-area-inset-bottom))" : compact ? "0 5% 18px" : "0 8% 22px", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: mobile ? 8 : 14, marginBottom: mobile ? 8 : 10, flexWrap: "wrap" }}>
                 {[["Guidance", modeOpts], ["Spoiler ward", tolOpts]].map(([label, opts]) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontFamily: cin, fontSize: 10, letterSpacing: ".18em", textTransform: "uppercase", color: t.textDim }}>{label}</span>
-                    <div style={{ display: "flex", border: `1px solid ${t.border}`, borderRadius: 999, padding: 2, background: t.panelBg }}>
+                    {!mobile && <span style={{ fontFamily: cin, fontSize: 10, letterSpacing: ".18em", textTransform: "uppercase", color: t.textDim }}>{label}</span>}
+                    <div title={label} style={{ display: "flex", border: `1px solid ${t.border}`, borderRadius: 999, padding: 2, background: t.panelBg }}>
                       {opts.map((o) => (
                         <button key={o.val} onClick={o.pick} title={o.tip}
-                          style={{ fontFamily: gar, fontSize: 13.5, padding: "5px 14px", borderRadius: 999, cursor: "pointer", border: "none", background: o.bg, color: o.fg, transition: "all 500ms ease" }}>{o.label}</button>
+                          style={{ fontFamily: gar, fontSize: mobile ? 12.5 : 13.5, padding: mobile ? "5px 10px" : "5px 14px", borderRadius: 999, cursor: "pointer", border: "none", background: o.bg, color: o.fg, transition: "all 500ms ease", whiteSpace: "nowrap" }}>{o.label}</button>
                       ))}
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: mobile ? 8 : 12, alignItems: "center" }}>
                 <input className="cc-focus" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") ask(input); }}
                   placeholder={game === "hk" ? "Ask the Guide of Hallownest…" : "Ask the Weaver of Pharloom…"}
-                  style={{ flex: 1, padding: "15px 20px", fontFamily: gar, fontSize: 17, borderRadius: 14, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none", backdropFilter: "blur(6px)", transition: "border-color 500ms ease, background 1200ms ease" }} />
+                  style={{ flex: 1, minWidth: 0, padding: mobile ? "12px 16px" : "15px 20px", fontFamily: gar, fontSize: mobile ? 16 : 17, borderRadius: 14, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none", backdropFilter: "blur(6px)", transition: "border-color 500ms ease, background 1200ms ease" }} />
                 <button ref={sendBtnRef} className="cc-send" onClick={() => ask(input)} title="Send"
-                  style={{ width: 52, height: 52, borderRadius: "50%", cursor: "pointer", border: `1px solid ${t.glowDim}`, background: t.sendBg, color: t.accent, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 500ms ease", flexShrink: 0 }}>➤</button>
+                  style={{ width: mobile ? 46 : 52, height: mobile ? 46 : 52, borderRadius: "50%", cursor: "pointer", border: `1px solid ${t.glowDim}`, background: t.sendBg, color: t.accent, fontSize: mobile ? 16 : 18, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 500ms ease", flexShrink: 0 }}>➤</button>
               </div>
             </div>
           </main>
@@ -563,8 +599,8 @@ export default function CompanionCube() {
 
       {authModalOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(2,5,10,.72)", backdropFilter: "blur(6px)", animation: "fadeIn .4s ease both" }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, textAlign: "center", padding: 44, margin: 20, maxWidth: 420, border: `1px solid ${t.border}`, borderRadius: 16, background: t.popBg, boxShadow: "0 24px 70px rgba(0,0,0,.6)", animation: "fadeUp .4s ease both" }}>
-            <img src="/assets/icon-hk.png" width={64} height={64} alt="" style={{ filter: "drop-shadow(0 0 16px rgba(140,195,255,.3))" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: mobile ? 16 : 20, textAlign: "center", padding: mobile ? "32px 24px" : 44, margin: 20, maxWidth: "min(420px, calc(100vw - 40px))", border: `1px solid ${t.border}`, borderRadius: 16, background: t.popBg, boxShadow: "0 24px 70px rgba(0,0,0,.6)", animation: "fadeUp .4s ease both" }}>
+            <img src="/assets/cube.png" width={64} height={64} alt="" style={{ borderRadius: 12, filter: "drop-shadow(0 0 16px rgba(140,195,255,.3))" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
             <div style={{ fontFamily: cin, fontSize: 22, fontWeight: 500, letterSpacing: ".26em", textTransform: "uppercase" }}>CompanionCube</div>
             <div style={{ fontSize: 16, lineHeight: 1.6, color: t.textDim, fontStyle: "italic" }}>
               A spoiler-aware guide to Hallownest and Pharloom. Sign in to carry your progress across your devices.
