@@ -24,10 +24,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from companion_cube import retrieval
 from companion_cube.generate import build_llm, generate
 from companion_cube.models import Mode, PlayerState, SpoilerTolerance
-from companion_cube.retrieval import retrieve
 
 ROOT = Path(__file__).resolve().parent.parent
 TYPE_GROUP = {"ability": "abilities", "area": "areas", "boss": "bosses"}
@@ -72,8 +70,15 @@ JUNK_DOCS = EXCLUDE | {"gallery", "controls", "completion"}   # meta pages to ke
 app = FastAPI(title="CompanionCube API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# warm the embedding/rerank models off the request path — in a thread so the port binds immediately
-threading.Thread(target=retrieval._resources, daemon=True).start()
+# warm the models off the request path — the import itself lives here too, since pulling in
+# fastembed/onnxruntime takes ~10s on a cold machine and the port must bind before Fly's proxy
+# gives up; a request that beats the warmup just waits on the same import + load locks
+def _warmup():
+    from companion_cube import retrieval
+    retrieval._resources()
+
+
+threading.Thread(target=_warmup, daemon=True).start()
 
 # Per-IP rate limit (in-memory; fine for a single uvicorn worker) to blunt spam.
 RATE_PER_MIN = int(os.getenv("RATE_PER_MIN", "15"))
@@ -173,6 +178,8 @@ def query(q: Query, request: Request):
     player = PlayerState(completed_beats=set(q.completed_beats))
     tol = SpoilerTolerance(q.tolerance) if q.tolerance in ("none", "light") else SpoilerTolerance.NONE
     mode = Mode(q.mode) if q.mode in ("hold_my_hand", "gently_nudge") else Mode.HOLD_MY_HAND
+
+    from companion_cube.retrieval import retrieve
 
     try:
         hits = retrieve(q.question, player, tol, game=q.game, k=12)
