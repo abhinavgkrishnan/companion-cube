@@ -5,7 +5,6 @@
 
 app = 'companion-cube'
 primary_region = 'bom'
-swap_size_mb = 1024
 
 [build]
 [http_service]

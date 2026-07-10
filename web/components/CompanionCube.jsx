@@ -41,14 +41,41 @@ async function fetchBeats(gameKey) {
     return EMPTY_BEATS;
   }
 }
-async function postQuery(body) {
+async function streamQuery(body, onCitations, onDelta) {
   const r = await fetch(`${API_BASE}/api/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, stream: true }),
   });
-  if (!r.ok) throw new Error("query failed");
-  return await r.json();
+  if (!r.ok || !r.body) throw new Error("query failed");
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let error = null;
+  const handle = (line) => {
+    if (!line) return;
+    const msg = JSON.parse(line);
+    if (msg.type === "citations") onCitations(msg.citations || []);
+    else if (msg.type === "delta") onDelta(msg.text);
+    else if (msg.type === "error") error = msg.message;
+    else if (msg.answer !== undefined) { onCitations(msg.citations || []); onDelta(msg.answer); } // non-stream backend
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) !== -1) {
+      handle(buf.slice(0, nl).trim());
+      buf = buf.slice(nl + 1);
+    }
+  }
+  handle(buf.trim());
+  if (error) {
+    const e = new Error("model error");
+    e.inCharacter = error;
+    throw e;
+  }
 }
 
 // ─── Markdown → React ───
@@ -256,10 +283,22 @@ export default function CompanionCube() {
       .slice(-6)
       .map((m) => ({ role: m.role === "guide" ? "assistant" : "user", content: m.md }));
     saveMessage(convoId, "user", qtext);
-    postQuery({ question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game], history,
-                provider: byok.provider || undefined, api_key: byok.key || undefined, model: byok.model || undefined })
-      .then((res) => { stream(id + 1, res); saveMessage(convoId, "guide", res.answer, res.citations || []); })
-      .catch(() => stream(id + 1, { answer: "*The link to the archives is broken.*\n\nIs the backend running? Start it with `python -m uvicorn api.main:app --port 8000` from the repo root.", citations: [] }));
+    let acc = "";
+    let cites = [];
+    streamQuery(
+      { question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game], history,
+        provider: byok.provider || undefined, api_key: byok.key || undefined, model: byok.model || undefined },
+      (c) => { cites = c; },
+      (text) => {
+        acc += text;
+        setMessages((s) => s.map((m) => (m.id === id + 1 ? { ...m, pending: false, md: acc } : m)));
+      },
+    )
+      .then(() => {
+        setMessages((s) => s.map((m) => (m.id === id + 1 ? { ...m, pending: false, citations: cites } : m)));
+        saveMessage(convoId, "guide", acc, cites);
+      })
+      .catch((e) => stream(id + 1, { answer: e.inCharacter || "*The link to the archives is broken.*\n\nIs the backend running? Start it with `python -m uvicorn api.main:app --port 8000` from the repo root.", citations: [] }));
   }, [game, mode, tolerance, checked, convoId, byok, stream]);
 
   // ─── derived view values ───

@@ -129,7 +129,9 @@ def retrieve(query, player: PlayerState, tolerance: SpoilerTolerance = SpoilerTo
         limit=fetch,
         with_payload=True,
     )
-    payloads = [pt.payload or {} for pt in res.points]
+    # rerank only the RRF head: the cross-encoder is the latency hotspot on one shared vCPU,
+    # and fusion has already concentrated the plausible hits at the top
+    payloads = [pt.payload or {} for pt in res.points][: max(2 * k, 12)]
     if not payloads:
         return []
 

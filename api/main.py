@@ -22,9 +22,10 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from companion_cube.generate import build_llm, generate
+from companion_cube.generate import build_llm, generate, generate_stream
 from companion_cube.models import Mode, PlayerState, SpoilerTolerance
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -136,6 +137,7 @@ class Query(BaseModel):
     provider: str | None = None    # BYOK: anthropic | openai | gemini | openrouter (else server default)
     api_key: str | None = None
     model: str | None = None
+    stream: bool = False           # NDJSON token stream instead of a single JSON answer
 
 
 def _history(turns):
@@ -167,17 +169,19 @@ def _progress_summary(game: str, completed: list[str]) -> str:
     return "; ".join(parts)
 
 
-@app.post("/api/query")
-def query(q: Query, request: Request):
-    if not _rate_ok(_client_ip(request)):
-        return {"answer": "*Rest a moment.*\n\nYou are asking faster than I can answer — try again in a little while.", "citations": []}
+MODEL_ERROR = ("*The words would not come.*\n\nThe model could not be reached. If you set your own "
+               "API key in Settings, check that it is valid and has credit.")
 
+
+def _prepare(q: Query, request: Request):
+    """Everything before generation: rate limit, gate, retrieve. Returns (error, hits, citations)."""
+    if not _rate_ok(_client_ip(request)):
+        return "*Rest a moment.*\n\nYou are asking faster than I can answer — try again in a little while.", [], []
     if not _indexed(q.game):
-        return {"answer": "*That kingdom is not yet mapped.*\n\nSilksong hasn't been indexed yet — check back soon.", "citations": []}
+        return "*That kingdom is not yet mapped.*\n\nSilksong hasn't been indexed yet — check back soon.", [], []
 
     player = PlayerState(completed_beats=set(q.completed_beats))
     tol = SpoilerTolerance(q.tolerance) if q.tolerance in ("none", "light") else SpoilerTolerance.NONE
-    mode = Mode(q.mode) if q.mode in ("hold_my_hand", "gently_nudge") else Mode.HOLD_MY_HAND
 
     from companion_cube.retrieval import retrieve
 
@@ -185,20 +189,72 @@ def query(q: Query, request: Request):
         hits = retrieve(q.question, player, tol, game=q.game, k=12)
     except Exception:
         # collection not built yet (e.g. tagged but not embedded)
-        return {"answer": "*That kingdom is not yet mapped.*\n\nIts pages are still being indexed — check back soon.", "citations": []}
+        return "*That kingdom is not yet mapped.*\n\nIts pages are still being indexed — check back soon.", [], []
 
     hits = [h for h in hits if SUFFIX.sub("", h["doc_title"]).lower() not in JUNK_DOCS][:6]
+    seen, citations = set(), []
+    for h in hits:
+        if h["url"] not in seen:
+            seen.add(h["url"])
+            citations.append({"id": h["chunk_id"], "title": h["doc_title"], "section": h["section"], "url": h["url"]})
+    return None, hits, citations[:4]
+
+
+def _ndjson(obj) -> str:
+    return json.dumps(obj) + "\n"
+
+
+def _say(text: str):
+    """A fixed message shaped like a stream, so the client has one code path."""
+    yield _ndjson({"type": "citations", "citations": []})
+    yield _ndjson({"type": "delta", "text": text})
+    yield _ndjson({"type": "done"})
+
+
+def _stream_answer(q: Query, mode: Mode, hits: list, citations: list):
+    yield _ndjson({"type": "citations", "citations": citations})
+    llm = build_llm(q.provider, q.api_key, q.model)
+    progress = _progress_summary(q.game, q.completed_beats)
+    raw, sent = "", ""
+    try:
+        for chunk in generate_stream(q.question, hits, mode, game=q.game, progress=progress,
+                                     history=_history(q.history), llm=llm):
+            raw += chunk
+            clean = INLINE_CITE.sub("", raw)
+            # hold back a trailing "[" — it may be the start of a cite marker still arriving
+            cut = clean.rfind("[")
+            safe = clean if cut == -1 or "]" in clean[cut:] or len(clean) - cut > 80 else clean[:cut]
+            if len(safe) > len(sent):
+                yield _ndjson({"type": "delta", "text": safe[len(sent):]})
+                sent = safe
+        clean = INLINE_CITE.sub("", raw)
+        if len(clean) > len(sent):
+            yield _ndjson({"type": "delta", "text": clean[len(sent):]})
+        if not raw:
+            yield _ndjson({"type": "error", "message": MODEL_ERROR})
+            return
+    except Exception:
+        yield _ndjson({"type": "error", "message": MODEL_ERROR})
+        return
+    yield _ndjson({"type": "done"})
+
+
+@app.post("/api/query")
+def query(q: Query, request: Request):
+    error, hits, citations = _prepare(q, request)
+    mode = Mode(q.mode) if q.mode in ("hold_my_hand", "gently_nudge") else Mode.HOLD_MY_HAND
+
+    if q.stream:
+        gen = _say(error) if error else _stream_answer(q, mode, hits, citations)
+        return StreamingResponse(gen, media_type="application/x-ndjson")
+
+    if error:
+        return {"answer": error, "citations": []}
     progress = _progress_summary(q.game, q.completed_beats)
     llm = build_llm(q.provider, q.api_key, q.model)
     try:
         answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game, progress=progress,
                                               history=_history(q.history), llm=llm)).strip()
     except Exception:
-        return {"answer": "*The words would not come.*\n\nThe model could not be reached. If you set your own API key in Settings, check that it is valid and has credit.", "citations": []}
-
-    seen, citations = set(), []
-    for h in hits:
-        if h["url"] not in seen:
-            seen.add(h["url"])
-            citations.append({"id": h["chunk_id"], "title": h["doc_title"], "section": h["section"], "url": h["url"]})
-    return {"answer": answer, "citations": citations[:4]}
+        return {"answer": MODEL_ERROR, "citations": []}
+    return {"answer": answer, "citations": citations}
