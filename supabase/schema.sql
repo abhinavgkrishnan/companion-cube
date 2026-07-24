@@ -15,6 +15,20 @@ alter table progress enable row level security;
 create policy "own progress" on progress
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+-- collectibles: one row per user per game — the set of checked completion-checklist item ids
+-- (mask shards, tools, charms, ...). Purely for the player's own tracking; unlike `progress`, this
+-- never gates retrieval. See web/lib/checklistData.js for the item taxonomy.
+create table if not exists collectibles (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  game       text not null,
+  items      jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, game)
+);
+alter table collectibles enable row level security;
+create policy "own collectibles" on collectibles
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 -- conversations: a chat thread, per user per game
 create table if not exists conversations (
   id         uuid primary key default gen_random_uuid(),

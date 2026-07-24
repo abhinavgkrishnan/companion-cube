@@ -57,15 +57,27 @@ MODE_INSTRUCTIONS = {
 }
 
 
-def build_prompt(query, chunks, mode: Mode, game: str, progress: str = "") -> tuple[str, str]:
+def build_prompt(query, chunks, mode: Mode, game: str, progress: str = "", collected: str = "") -> tuple[str, str]:
     system = PERSONA.get(game, PERSONA["hollow_knight"]) + GROUNDING
     if chunks:
         excerpts = "\n\n".join(f"({c['doc_title']} / {c['section']}) {c['text']}" for c in chunks)
     else:
         excerpts = "(no lore is available at the seeker's current progress)"
+    # `collected` is a separate, informational checklist (mask shards, tools, charms, ...) — never a
+    # permission set. It doesn't affect which excerpts were retrieved (the gate already ran on
+    # `progress`/completed beats alone), so it's flagged explicitly as awareness-only to keep the
+    # model from treating it as another spoiler boundary to reason about.
+    collected_line = (
+        f"Items and upgrades the seeker has already collected (for awareness only — this does NOT "
+        f"gate or expand what you may say, the excerpts above are already the full extent of what's "
+        f"safe to draw on; use it only to avoid pointlessly re-suggesting something they already "
+        f"hold): {collected}\n\n"
+        if collected else ""
+    )
     user = (
         f"{MODE_INSTRUCTIONS[mode]}\n\n"
         f"Where the seeker stands: {progress or 'the very beginning of the journey'}\n\n"
+        f"{collected_line}"
         f"Guide excerpts:\n{excerpts}\n\n"
         f"The seeker asks: {query}"
     )
@@ -236,14 +248,14 @@ def default_llm() -> LLM:
 
 
 def generate(query, chunks, mode: Mode, game: str = "hollow_knight", progress: str = "",
-             history: list | None = None, llm: LLM | None = None) -> str:
+             history: list | None = None, llm: LLM | None = None, collected: str = "") -> str:
     llm = llm or default_llm()
-    system, user = build_prompt(query, chunks, mode, game, progress)
+    system, user = build_prompt(query, chunks, mode, game, progress, collected)
     return llm.complete(system, user, history)
 
 
 def generate_stream(query, chunks, mode: Mode, game: str = "hollow_knight", progress: str = "",
-                    history: list | None = None, llm: LLM | None = None) -> Iterator[str]:
+                    history: list | None = None, llm: LLM | None = None, collected: str = "") -> Iterator[str]:
     llm = llm or default_llm()
-    system, user = build_prompt(query, chunks, mode, game, progress)
+    system, user = build_prompt(query, chunks, mode, game, progress, collected)
     return llm.stream(system, user, history)

@@ -133,6 +133,7 @@ class Query(BaseModel):
     mode: str = "hold_my_hand"
     tolerance: str = "none"
     completed_beats: list[str] = []
+    collected_summary: str = ""    # checklist items already gathered — awareness only, never gates retrieval
     history: list[dict] = []       # recent [{role, content}] turns from the client, for context
     provider: str | None = None    # BYOK: anthropic | openai | gemini | openrouter (else server default)
     api_key: str | None = None
@@ -215,10 +216,11 @@ def _stream_answer(q: Query, mode: Mode, hits: list, citations: list):
     yield _ndjson({"type": "citations", "citations": citations})
     llm = build_llm(q.provider, q.api_key, q.model)
     progress = _progress_summary(q.game, q.completed_beats)
+    collected = q.collected_summary[:1500]
     raw, sent = "", ""
     try:
         for chunk in generate_stream(q.question, hits, mode, game=q.game, progress=progress,
-                                     history=_history(q.history), llm=llm):
+                                     history=_history(q.history), llm=llm, collected=collected):
             raw += chunk
             clean = INLINE_CITE.sub("", raw)
             # hold back a trailing "[" — it may be the start of a cite marker still arriving
@@ -254,7 +256,8 @@ def query(q: Query, request: Request):
     llm = build_llm(q.provider, q.api_key, q.model)
     try:
         answer = INLINE_CITE.sub("", generate(q.question, hits, mode, game=q.game, progress=progress,
-                                              history=_history(q.history), llm=llm)).strip()
+                                              history=_history(q.history), llm=llm,
+                                              collected=q.collected_summary[:1500])).strip()
     except Exception:
         return {"answer": MODEL_ERROR, "citations": []}
     return {"answer": answer, "citations": citations}

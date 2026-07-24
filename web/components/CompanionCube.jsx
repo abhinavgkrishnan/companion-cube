@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { supabase, authEnabled } from "@/lib/supabase";
-import { loadConversation, loadProgress, saveMessage, saveProgress } from "@/lib/data";
+import { loadChecklist, loadConversation, loadProgress, saveChecklist, saveMessage, saveProgress } from "@/lib/data";
+import { CHECKLISTS, collectedSummary } from "@/lib/checklistData";
 
 // Dust density + vignette were canvas-editor props in the source design; fixed here.
 const DUST_DENSITY = 110;
@@ -132,6 +133,11 @@ export default function CompanionCube() {
   const [mode, setMode] = useState("hold_my_hand");
   const [tolerance, setTolerance] = useState("none");
   const [checked, setChecked] = useState({ hk: ["forgotten_crossroads"], ss: ["moss_grotto"] });
+  const [collected, setCollected] = useState({ hk: [], ss: [] });
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [checklistSearch, setChecklistSearch] = useState("");
+  const [checklistHideDone, setChecklistHideDone] = useState(false);
+  const [checklistOpenCats, setChecklistOpenCats] = useState({});
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -189,6 +195,7 @@ export default function CompanionCube() {
     const user = session?.user ?? null;
     const defaults = game === "ss" ? ["moss_grotto"] : ["forgotten_crossroads"];
     loadProgress(user, gk, defaults).then((b) => { if (alive) setChecked((st) => ({ ...st, [game]: b })); });
+    loadChecklist(user, gk, []).then((items) => { if (alive) setCollected((st) => ({ ...st, [game]: items })); });
     loadConversation(user, gk).then((c) => { if (alive) { setConvoId(c.id); setMessages(c.messages); } });
     return () => { alive = false; };
   }, [game, session]);
@@ -287,6 +294,7 @@ export default function CompanionCube() {
     let cites = [];
     streamQuery(
       { question: qtext, game: gameKey, mode, tolerance, completed_beats: checked[game], history,
+        collected_summary: collectedSummary(gameKey, collected[game]),
         provider: byok.provider || undefined, api_key: byok.key || undefined, model: byok.model || undefined },
       (c) => { cites = c; },
       (text) => {
@@ -299,7 +307,7 @@ export default function CompanionCube() {
         saveMessage(convoId, "guide", acc, cites);
       })
       .catch((e) => stream(id + 1, { answer: e.inCharacter || "*The link to the archives is broken.*\n\nIs the backend running? Start it with `python -m uvicorn api.main:app --port 8000` from the repo root.", citations: [] }));
-  }, [game, mode, tolerance, checked, convoId, byok, stream]);
+  }, [game, mode, tolerance, checked, collected, convoId, byok, stream]);
 
   // ─── derived view values ───
   const vw = useViewportWidth();
@@ -319,6 +327,27 @@ export default function CompanionCube() {
     setChecked((st) => ({ ...st, [game]: next }));
     persist(next);
   };
+
+  // ─── completion checklist (mask shards, tools, charms, ...) — tracking only, never gates retrieval ───
+  const checklistCats = CHECKLISTS[gameKey] || [];
+  const collectedIds = collected[game] || [];
+  const checklistTotal = checklistCats.reduce((n, c) => n + c.items.length, 0);
+  const checklistDone = collectedIds.filter((id) => checklistCats.some((c) => c.items.some((it) => it.id === id))).length;
+  const toggleCollected = (id) => {
+    const next = collectedIds.includes(id) ? collectedIds.filter((x) => x !== id) : [...collectedIds, id];
+    setCollected((st) => ({ ...st, [game]: next }));
+    saveChecklist(session?.user ?? null, gameKey, next);
+  };
+  const cq = checklistSearch.trim().toLowerCase();
+  const checklistGroups = checklistCats.map((c) => {
+    const doneN = c.items.filter((it) => collectedIds.includes(it.id)).length;
+    const items = c.items.filter((it) => {
+      if (cq && !it.name.toLowerCase().includes(cq) && !it.location.toLowerCase().includes(cq)) return false;
+      if (checklistHideDone && collectedIds.includes(it.id)) return false;
+      return true;
+    });
+    return { ...c, items, doneN, total: c.items.length };
+  }).filter((c) => c.items.length > 0);
   const allIds = all.map((a) => a.id);
   const setPreset = (tier) => {
     const ids = tier === "just" ? [] : tier === "end" ? allIds : allIds.slice(0, Math.ceil(allIds.length / 2));
@@ -511,6 +540,11 @@ export default function CompanionCube() {
                 </div>
                 <input className="cc-focus" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a boss, area, ability…"
                   style={{ marginTop: 12, width: "100%", padding: "9px 12px", fontFamily: gar, fontSize: 16, borderRadius: 8, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none", transition: "border-color 400ms ease" }} />
+                <button className="cc-hover" onClick={() => setChecklistOpen(true)}
+                  style={{ marginTop: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 12px", fontFamily: gar, fontSize: 14, borderRadius: 8, cursor: "pointer", border: `1px solid ${t.border}`, background: t.inputBg, color: t.text }}>
+                  <span>☑ Completion checklist</span>
+                  <span style={{ fontSize: 12, color: t.textDim }}>{checklistDone} / {checklistTotal}</span>
+                </button>
               </div>
 
               <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 20px", minHeight: 0 }}>
@@ -652,6 +686,84 @@ export default function CompanionCube() {
               style={{ fontFamily: gar, fontSize: 14, color: t.textDim, background: "transparent", border: "none", cursor: "pointer" }}>
               Continue without signing in
             </button>
+          </div>
+        </div>
+      )}
+
+      {checklistOpen && (
+        <div onClick={() => setChecklistOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 110, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(2,5,10,.72)", backdropFilter: "blur(6px)", animation: "fadeIn .3s ease both", padding: mobile ? 10 : 24 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ display: "flex", flexDirection: "column", width: "min(760px, 100%)", maxHeight: "min(86vh, 860px)", border: `1px solid ${t.border}`, borderRadius: 16, background: t.popBg, boxShadow: "0 24px 70px rgba(0,0,0,.6)", animation: "fadeUp .35s ease both" }}>
+
+            <div style={{ padding: mobile ? "18px 18px 14px" : "22px 26px 16px", borderBottom: `1px solid ${t.border}`, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ fontFamily: cin, fontSize: mobile ? 15 : 17, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: t.accent }}>
+                  {game === "hk" ? "Hollow Knight" : "Silksong"} Completion Checklist
+                </div>
+                <button onClick={() => setChecklistOpen(false)} aria-label="Close checklist"
+                  style={{ width: 40, height: 40, flexShrink: 0, marginRight: -8, marginTop: -6, borderRadius: 8, border: "none", background: "transparent", color: t.textDim, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+              </div>
+              <div style={{ fontSize: 13, color: t.textDim, marginTop: 6, fontStyle: "italic" }}>
+                Track your own completion — this is separate from your marked progress and never hides or reveals anything the guide can say. It's just told what you've collected so it can talk about it naturally.
+              </div>
+              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1, height: 4, borderRadius: 2, background: t.trackBg, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: (checklistTotal ? Math.round((100 * checklistDone) / checklistTotal) : 0) + "%", borderRadius: 2, background: `linear-gradient(90deg, ${t.glowDimGrad}, ${t.glow})`, boxShadow: `0 0 8px ${t.glowSoft}`, transition: "width 600ms cubic-bezier(.4,0,.2,1)" }} />
+                </div>
+                <div style={{ fontSize: 13, color: t.textDim, whiteSpace: "nowrap" }}>{checklistDone} / {checklistTotal}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+                <input className="cc-focus" value={checklistSearch} onChange={(e) => setChecklistSearch(e.target.value)} placeholder="Find an item…"
+                  style={{ flex: 1, padding: "8px 12px", fontFamily: gar, fontSize: 15, borderRadius: 8, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none" }} />
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.textDim, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  <button onClick={() => setChecklistHideDone((v) => !v)} style={{ width: 34, height: 19, borderRadius: 999, border: `1px solid ${t.border}`, background: checklistHideDone ? t.chipBg : "transparent", position: "relative", cursor: "pointer" }}>
+                    <span style={{ position: "absolute", top: 2, left: checklistHideDone ? 16 : 2, width: 13, height: 13, borderRadius: "50%", background: t.accent, transition: "left 250ms ease" }} />
+                  </button>
+                  Hide done
+                </label>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: mobile ? "8px 12px 18px" : "10px 16px 22px", minHeight: 0 }}>
+              {checklistGroups.map((c) => {
+                const open = checklistOpenCats[c.key] ?? true;
+                return (
+                  <div key={c.key} style={{ marginTop: 10 }}>
+                    <button onClick={() => setChecklistOpenCats((s) => ({ ...s, [c.key]: !open }))}
+                      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px", border: "none", background: "transparent", cursor: "pointer" }}>
+                      <span style={{ fontSize: 9, color: t.textDim, transform: open ? "rotate(90deg)" : "none", transition: "transform 300ms ease" }}>▶</span>
+                      <span style={{ fontFamily: cin, fontSize: 12, fontWeight: 600, letterSpacing: ".18em", textTransform: "uppercase", color: t.text }}>{c.label}</span>
+                      <span style={{ flex: 1, height: 1, background: t.border }} />
+                      <span style={{ fontSize: 12, color: t.textDim }}>{c.doneN} / {c.total}</span>
+                    </button>
+                    {open && (
+                      <div>
+                        {c.items.map((it) => {
+                          const on = collectedIds.includes(it.id);
+                          return (
+                            <button key={it.id} className="cc-row" onClick={() => toggleCollected(it.id)}
+                              style={{ display: "flex", alignItems: "flex-start", gap: 12, width: "100%", textAlign: "left", padding: "8px 10px", border: "none", borderRadius: 6, background: "transparent", cursor: "pointer", fontFamily: gar }}>
+                              <span style={{ marginTop: 2, width: 16, textAlign: "center", fontSize: 12, flexShrink: 0, color: on ? t.glow : t.textDim, textShadow: on ? `0 0 8px ${t.glowSoft}` : "none" }}>{on ? "◆" : "◇"}</span>
+                              <span style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ display: "block", fontSize: 15, color: on ? t.text : t.textDim }}>{it.name}</span>
+                                <span style={{ display: "block", fontSize: 12.5, color: t.textDim, marginTop: 2 }}>
+                                  <span style={{ opacity: 0.9 }}>{it.location}</span>
+                                  {it.note && <span> — {it.note}</span>}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {checklistGroups.length === 0 && (
+                <div style={{ padding: "24px 10px", fontSize: 14, color: t.textDim, fontStyle: "italic" }}>No items match your search.</div>
+              )}
+            </div>
           </div>
         </div>
       )}

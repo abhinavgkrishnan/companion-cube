@@ -4,6 +4,7 @@
 import { supabase } from "./supabase";
 
 const lsKey = (game) => `cc-progress-${game}`;
+const checklistLsKey = (game) => `cc-checklist-${game}`;
 
 export async function loadProgress(user, game, fallback) {
   if (supabase && user) {
@@ -25,6 +26,31 @@ export async function saveProgress(user, game, beats) {
     );
   } else if (typeof window !== "undefined") {
     localStorage.setItem(lsKey(game), JSON.stringify(beats));
+  }
+}
+
+// The completion checklist (mask shards, tools, charms, ...) — a separate, purely-informational
+// tracker. It never feeds the spoiler gate; see web/lib/checklistData.js.
+export async function loadChecklist(user, game, fallback = []) {
+  if (supabase && user) {
+    const { data } = await supabase.from("collectibles").select("items").eq("game", game).maybeSingle();
+    return data?.items ?? fallback;
+  }
+  if (typeof window !== "undefined") {
+    const raw = localStorage.getItem(checklistLsKey(game));
+    if (raw) return JSON.parse(raw);
+  }
+  return fallback;
+}
+
+export async function saveChecklist(user, game, items) {
+  if (supabase && user) {
+    await supabase.from("collectibles").upsert(
+      { user_id: user.id, game, items, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,game" },
+    );
+  } else if (typeof window !== "undefined") {
+    localStorage.setItem(checklistLsKey(game), JSON.stringify(items));
   }
 }
 
