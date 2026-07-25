@@ -111,6 +111,23 @@ function mdRender(md) {
   flush(); return blocks;
 }
 
+// A drawn glyph, not a text/emoji character — some mobile keyboards substitute a colored emoji
+// for "☑"-style checkbox characters, which clashes with the app's thin monochrome line-art icons.
+function ChecklistIcon({ size = 17 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="2" width="4.5" height="4.5" rx="0.9" />
+      <path d="M2.5 4.2l1 1 1.6-2" />
+      <line x1="8.3" y1="4.25" x2="18" y2="4.25" />
+      <rect x="1.5" y="8.75" width="4.5" height="4.5" rx="0.9" />
+      <path d="M2.5 11l1 1 1.6-2" />
+      <line x1="8.3" y1="11" x2="18" y2="11" />
+      <rect x="1.5" y="15.5" width="4.5" height="4.5" rx="0.9" opacity="0.5" />
+      <line x1="8.3" y1="17.75" x2="18" y2="17.75" opacity="0.5" />
+    </svg>
+  );
+}
+
 // Everything here is inline-styled, so breakpoints live in JS rather than media queries.
 function useViewportWidth() {
   const [w, setW] = useState(1280);
@@ -451,7 +468,13 @@ export default function CompanionCube() {
             </div>
           </div>
 
-          <div ref={settingsRef} style={{ minWidth: compact ? 0 : 280, display: "flex", justifyContent: "flex-end", position: "relative" }}>
+          <div style={{ minWidth: compact ? 0 : 280, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: mobile ? 8 : 10 }}>
+            <button className="cc-settings" onClick={() => { setSettingsOpen(false); setChecklistOpen(true); }}
+              title={`Completion checklist — ${checklistDone} / ${checklistTotal}`} aria-label="Completion checklist"
+              style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${t.border}`, background: "transparent", color: t.accent, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, transition: "all 500ms ease" }}>
+              <ChecklistIcon size={17} />
+            </button>
+          <div ref={settingsRef} style={{ position: "relative" }}>
             <button className="cc-settings" onClick={() => setSettingsOpen((v) => !v)} title={user ? displayName : "Settings"}
               style={{ width: 38, height: 38, borderRadius: "50%", border: `1px solid ${user ? t.glowDim : t.border}`, background: "transparent", color: t.accent, fontFamily: gar, fontSize: user ? 13 : 16, cursor: "pointer", transition: "all 500ms ease", overflow: "hidden", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {user && avatarUrl && !avatarError
@@ -507,6 +530,7 @@ export default function CompanionCube() {
               </div>
             )}
           </div>
+          </div>
         </header>
 
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
@@ -540,11 +564,6 @@ export default function CompanionCube() {
                 </div>
                 <input className="cc-focus" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a boss, area, ability…"
                   style={{ marginTop: 12, width: "100%", padding: "9px 12px", fontFamily: gar, fontSize: 16, borderRadius: 8, border: `1px solid ${t.border}`, background: t.inputBg, color: t.text, outline: "none", transition: "border-color 400ms ease" }} />
-                <button className="cc-hover" onClick={() => setChecklistOpen(true)}
-                  style={{ marginTop: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 12px", fontFamily: gar, fontSize: 14, borderRadius: 8, cursor: "pointer", border: `1px solid ${t.border}`, background: t.inputBg, color: t.text }}>
-                  <span>☑ Completion checklist</span>
-                  <span style={{ fontSize: 12, color: t.textDim }}>{checklistDone} / {checklistTotal}</span>
-                </button>
               </div>
 
               <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 20px", minHeight: 0 }}>
